@@ -1,0 +1,18 @@
+[Unit]
+Description=DAB+ Radio Web Application
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/dab-radio
+EnvironmentFile=-/opt/dab-radio/.env
+ExecStart=/opt/dab-radio/venv/bin/python -m uvicorn server.main:app --host 0.0.0.0 --port ${WEB_PORT:-8080} --log-level info
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DAB+ Radio</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <h1>DAB+ Radio</h1>
+        <div id="status-indicator"></div>
+    </header>
+
+    <!-- Now Playing Panel -->
+    <section id="now-playing" class="panel hidden">
+        <div id="slide-image"></div>
+        <div id="station-info">
+            <h2 id="station-name"></h2>
+            <p id="ensemble-name"></p>
+            <p id="dls-text" class="dls"></p>
+            <div id="signal-info">
+                <span id="snr-value"></span>
+                <span id="bitrate-value"></span>
+                <span id="mode-value"></span>
+            </div>
+        </div>
+        <div id="playback-controls">
+            <button id="stop-btn" class="btn btn-stop">Stop</button>
+            <select id="output-mode">
+                <option value="browser">Browser Audio</option>
+                <option value="server">Server Audio</option>
+                <option value="both">Both</option>
+            </select>
+        </div>
+        <audio id="audio-player" crossorigin="anonymous"></audio>
+    </section>
+
+    <!-- Scan Controls -->
+    <section id="scan-section" class="panel">
+        <div class="scan-buttons">
+            <button id="scan-popular-btn" class="btn btn-primary">Quick Scan (9A-9C)</button>
+            <button id="scan-all-btn" class="btn btn-secondary">Full Band Scan</button>
+        </div>
+        <div id="scan-progress" class="hidden">
+            <div class="progress-bar"><div id="progress-fill"></div></div>
+            <p id="scan-status"></p>
+        </div>
+    </section>
+
+    <!-- Station List -->
+    <section id="station-list" class="panel">
+        <h2>Stations</h2>
+        <div id="stations-container"></div>
+    </section>
+
+    <!-- System Status Footer -->
+    <footer id="system-status">
+        <span id="sdr-status"></span>
+        <span id="welle-status"></span>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
