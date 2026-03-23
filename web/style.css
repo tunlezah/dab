@@ -434,6 +434,13 @@ header h1 {
     border-radius: 2px;
 }
 
+/* Version label */
+.version-label {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.2);
+    margin-left: auto;
+}
+
 /* SDR device name */
 .sdr-device-name {
     font-size: 0.65rem;

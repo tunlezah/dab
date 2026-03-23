@@ -71,6 +71,12 @@ async function fetchStatus() {
         statusIndicator.innerHTML = sdrOk && welleOk
             ? '<span class="status-dot connected"></span> Connected'
             : '<span class="status-dot disconnected"></span> Offline';
+
+        const version = data.version || '';
+        const versionEl = document.getElementById('app-version');
+        if (versionEl && version) {
+            versionEl.textContent = 'v' + version;
+        }
     } catch {
         sdrStatus.innerHTML = '<span class="status-dot disconnected"></span> SDR';
         welleStatus.innerHTML = '<span class="status-dot disconnected"></span> welle.io';

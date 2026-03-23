@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from .config import WELLE_CLI_PORT
+from .config import APP_VERSION, WELLE_CLI_PORT
 from .welle_manager import WelleManager
 from .scanner import Scanner
 from .station_registry import StationRegistry
@@ -50,6 +50,7 @@ async def get_status() -> dict:
         "output_mode": _audio.output_mode,
         "signal_snr": snr,
         "sdr_device_name": _welle.device_name,
+        "version": APP_VERSION,
     }
 
 

@@ -3,8 +3,87 @@ set -euo pipefail
 
 # DAB+ Radio Web Application Installer
 # Safe to run multiple times (idempotent)
+# Usage:
+#   sudo ./install.sh              Install or upgrade
+#   sudo ./install.sh --uninstall  Remove everything
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="1.0.0"
+INSTALL_DIR="/opt/dab-radio"
+SERVICE_NAME="dab-radio"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+
+# ---------------------------------------------------------------------------
+# Uninstall function
+# ---------------------------------------------------------------------------
+do_uninstall() {
+    echo "============================================"
+    echo "  DAB+ Radio — Uninstalling"
+    echo "============================================"
+
+    # Stop and disable the service
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        echo ">>> Stopping $SERVICE_NAME service ..."
+        systemctl stop "$SERVICE_NAME"
+    fi
+    if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
+        echo ">>> Disabling $SERVICE_NAME service ..."
+        systemctl disable "$SERVICE_NAME"
+    fi
+
+    # Remove service file
+    if [[ -f "$SERVICE_FILE" ]]; then
+        echo ">>> Removing systemd service file ..."
+        rm -f "$SERVICE_FILE"
+        systemctl daemon-reload
+    fi
+
+    # Remove application directory
+    if [[ -d "$INSTALL_DIR" ]]; then
+        echo ">>> Removing $INSTALL_DIR ..."
+        rm -rf "$INSTALL_DIR"
+    fi
+
+    # Remove udev rules
+    if [[ -f /etc/udev/rules.d/20-rtlsdr.rules ]]; then
+        echo ">>> Removing RTL-SDR udev rules ..."
+        rm -f /etc/udev/rules.d/20-rtlsdr.rules
+        udevadm control --reload-rules 2>/dev/null || true
+    fi
+
+    # Remove kernel module blacklist
+    if [[ -f /etc/modprobe.d/blacklist-rtlsdr.conf ]]; then
+        echo ">>> Removing RTL-SDR kernel module blacklist ..."
+        rm -f /etc/modprobe.d/blacklist-rtlsdr.conf
+    fi
+
+    # Remove welle-cli if it was installed to /usr/local
+    if [[ -f /usr/local/bin/welle-cli ]]; then
+        echo ">>> Removing welle-cli from /usr/local/bin ..."
+        rm -f /usr/local/bin/welle-cli
+    fi
+
+    echo ""
+    echo "============================================"
+    echo "  DAB+ Radio has been uninstalled."
+    echo ""
+    echo "  System packages (rtl-sdr, mpg123, etc.)"
+    echo "  were left in place. Remove them manually"
+    echo "  with apt if no longer needed."
+    echo "============================================"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+if [[ "${1:-}" == "--uninstall" ]]; then
+    if [[ $EUID -ne 0 ]]; then
+        echo "ERROR: This script must be run as root (or with sudo)."
+        exit 1
+    fi
+    do_uninstall
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Check prerequisites
@@ -25,7 +104,28 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Install system packages
+# 2. Detect and clean previous installation
+# ---------------------------------------------------------------------------
+if [[ -d "$INSTALL_DIR" ]] || [[ -f "$SERVICE_FILE" ]]; then
+    echo ">>> Previous installation detected — upgrading ..."
+
+    # Stop the running service before we overwrite files
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        echo ">>> Stopping existing $SERVICE_NAME service ..."
+        systemctl stop "$SERVICE_NAME"
+    fi
+
+    # Remove old application files (keep .env for port config)
+    if [[ -d "$INSTALL_DIR" ]]; then
+        echo ">>> Cleaning old application files ..."
+        # Preserve .env (user port config) and venv (avoid full rebuild)
+        find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
+            ! -name '.env' ! -name 'venv' -exec rm -rf {} +
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Install system packages
 # ---------------------------------------------------------------------------
 echo ">>> Installing system packages ..."
 apt-get update
@@ -42,7 +142,7 @@ apt-get install -y \
     xxd
 
 # ---------------------------------------------------------------------------
-# 3. Build welle.io from source (if not already installed)
+# 4. Build welle.io from source (if not already installed)
 # ---------------------------------------------------------------------------
 if command -v welle-cli &>/dev/null; then
     echo ">>> welle-cli already installed, skipping"
@@ -62,7 +162,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Configure RTL-SDR
+# 5. Configure RTL-SDR
 # ---------------------------------------------------------------------------
 echo ">>> Configuring RTL-SDR kernel module blacklist and udev rules ..."
 
@@ -85,45 +185,48 @@ if lsmod | grep -q dvb_usb_rtl28xxu; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Set up Python environment
+# 6. Set up Python environment
 # ---------------------------------------------------------------------------
-echo ">>> Setting up application in /opt/dab-radio ..."
-mkdir -p /opt/dab-radio
+echo ">>> Setting up application in $INSTALL_DIR ..."
+mkdir -p "$INSTALL_DIR"
 
 # Copy project files (server/, web/, requirements.txt) from the repo checkout
 for item in server web requirements.txt; do
     if [[ -e "$SCRIPT_DIR/$item" ]]; then
-        cp -a "$SCRIPT_DIR/$item" /opt/dab-radio/
+        cp -a "$SCRIPT_DIR/$item" "$INSTALL_DIR/"
     else
         echo "WARNING: Expected project path $SCRIPT_DIR/$item not found — skipping."
     fi
 done
 
-if [[ ! -d /opt/dab-radio/venv ]]; then
-    python3 -m venv /opt/dab-radio/venv
+# Write version file so the app can display it
+echo "$VERSION" > "$INSTALL_DIR/VERSION"
+
+if [[ ! -d "$INSTALL_DIR/venv" ]]; then
+    python3 -m venv "$INSTALL_DIR/venv"
 fi
 
-/opt/dab-radio/venv/bin/pip install --upgrade pip
-/opt/dab-radio/venv/bin/pip install -r /opt/dab-radio/requirements.txt
+"$INSTALL_DIR/venv/bin/pip" install --upgrade pip
+"$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
 
 # ---------------------------------------------------------------------------
-# 6. Create systemd service
+# 7. Create systemd service
 # ---------------------------------------------------------------------------
 echo ">>> Installing systemd service ..."
-cp "$SCRIPT_DIR/dab-radio.service" /etc/systemd/system/dab-radio.service
+cp "$SCRIPT_DIR/dab-radio.service" "$SERVICE_FILE"
 systemctl daemon-reload
-systemctl enable dab-radio.service
+systemctl enable "$SERVICE_NAME"
 
 # ---------------------------------------------------------------------------
-# 7. Port configuration
+# 8. Port configuration
 # ---------------------------------------------------------------------------
 DEFAULT_PORT=8080
 PORT="$DEFAULT_PORT"
 
 # If an .env already exists with a chosen port, honour it unless that port is
 # now occupied by something else.
-if [[ -f /opt/dab-radio/.env ]]; then
-    EXISTING_PORT="$(grep -oP '^WEB_PORT=\K[0-9]+' /opt/dab-radio/.env 2>/dev/null || true)"
+if [[ -f "$INSTALL_DIR/.env" ]]; then
+    EXISTING_PORT="$(grep -oP '^WEB_PORT=\K[0-9]+' "$INSTALL_DIR/.env" 2>/dev/null || true)"
     if [[ -n "$EXISTING_PORT" ]]; then
         PORT="$EXISTING_PORT"
     fi
@@ -153,30 +256,33 @@ if port_in_use "$PORT"; then
     fi
 fi
 
-echo "WEB_PORT=$PORT" > /opt/dab-radio/.env
+echo "WEB_PORT=$PORT" > "$INSTALL_DIR/.env"
 echo ">>> Using port $PORT"
 
 # ---------------------------------------------------------------------------
-# 8. Start service
+# 9. Start service
 # ---------------------------------------------------------------------------
-echo ">>> Starting dab-radio service ..."
-systemctl start dab-radio.service
-echo ">>> DAB+ Radio is running at http://localhost:$PORT"
+echo ">>> Starting $SERVICE_NAME service ..."
+systemctl start "$SERVICE_NAME"
+echo ">>> DAB+ Radio v$VERSION is running at http://localhost:$PORT"
 
 # ---------------------------------------------------------------------------
-# 9. Print summary
+# 10. Print summary
 # ---------------------------------------------------------------------------
 cat <<EOF
 
 ============================================
-  DAB+ Radio Installation Complete!
+  DAB+ Radio v$VERSION — Installation Complete!
 ============================================
   Web UI: http://localhost:$PORT
 
   Manage with:
-    sudo systemctl status dab-radio
-    sudo systemctl restart dab-radio
-    sudo journalctl -u dab-radio -f
+    sudo systemctl status $SERVICE_NAME
+    sudo systemctl restart $SERVICE_NAME
+    sudo journalctl -u $SERVICE_NAME -f
+
+  Uninstall with:
+    sudo ./install.sh --uninstall
 
   NOTE: If this is a fresh RTL-SDR setup,
   you may need to reboot for driver changes.
