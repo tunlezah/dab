@@ -1,6 +1,15 @@
 """Configuration management for DAB+ radio web application."""
 
 import os
+from pathlib import Path
+
+# App version — read from VERSION file (written by installer), fallback to default
+_project_root = Path(__file__).resolve().parent.parent
+_version_file = Path(os.environ.get("VERSION_FILE", _project_root / "VERSION"))
+try:
+    APP_VERSION = _version_file.read_text().strip()
+except FileNotFoundError:
+    APP_VERSION = "dev"
 
 # welle-cli internal HTTP port
 WELLE_CLI_PORT: int = int(os.environ.get("WELLE_CLI_PORT", "7979"))

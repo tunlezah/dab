@@ -20,6 +20,7 @@ class WelleManager:
         self._current_channel: str | None = None
         self._monitor_task: asyncio.Task | None = None
         self._http: httpx.AsyncClient = httpx.AsyncClient(timeout=5.0)
+        self._device_name: str | None = None
 
     @property
     def running(self) -> bool:
@@ -28,6 +29,50 @@ class WelleManager:
     @property
     def current_channel(self) -> str | None:
         return self._current_channel
+
+    @property
+    def device_name(self) -> str | None:
+        return self._device_name
+
+    async def detect_device_name(self) -> str | None:
+        """Detect RTL-SDR device name using rtl_test -t (brief run)."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "rtl_test", "-t",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                _, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                stderr_data = b""
+
+            output = stderr_data.decode(errors="replace")
+            # rtl_test prints lines like:
+            #   Found 1 device(s):
+            #     0:  Realtek, RTL2838UHIDIR, SN: 00000001
+            # or  Using device 0: Generic RTL2832U OEM
+            for line in output.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("0:"):
+                    # "0:  Realtek, RTL2838UHIDIR, SN: 00000001"
+                    self._device_name = stripped[2:].strip()
+                    return self._device_name
+                if "Using device" in stripped:
+                    # "Using device 0: Generic RTL2832U OEM"
+                    parts = stripped.split(":", 1)
+                    if len(parts) > 1:
+                        self._device_name = parts[1].strip()
+                        return self._device_name
+        except FileNotFoundError:
+            logger.debug("rtl_test not found; cannot detect device name")
+        except OSError as exc:
+            logger.debug("Failed to run rtl_test: %s", exc)
+
+        self._device_name = None
+        return None
 
     async def start(self, channel: str = "9A") -> bool:
         """Start welle-cli on the given channel. Returns True on success."""

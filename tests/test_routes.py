@@ -18,6 +18,7 @@ def client():
     mock_welle = MagicMock()
     mock_welle.running = True
     mock_welle.current_channel = "9A"
+    mock_welle.device_name = None
     mock_welle.is_healthy = AsyncMock(return_value=True)
     mock_welle.get_mux_json = AsyncMock(return_value={
         "ensemble": {"label": "ABC NSW DAB"},
@@ -54,7 +55,12 @@ def client():
     mock_audio.play_server = AsyncMock(return_value=True)
     mock_audio.stop_server = AsyncMock()
 
-    routes.setup(mock_welle, mock_scanner, mock_registry, mock_audio)
+    mock_activity_log = MagicMock()
+    mock_activity_log.get_since = AsyncMock(return_value=[])
+    mock_activity_log.get_recent = AsyncMock(return_value=[])
+    mock_activity_log.add = AsyncMock()
+
+    routes.setup(mock_welle, mock_scanner, mock_registry, mock_audio, mock_activity_log)
 
     test_app = _create_test_app()
     with TestClient(test_app, raise_server_exceptions=False) as tc:

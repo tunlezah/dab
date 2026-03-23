@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from .config import BAND_III_CHANNELS, POPULAR_CHANNELS, SCAN_DWELL_TIME
 
 if TYPE_CHECKING:
+    from .activity_log import ActivityLog
     from .station_registry import StationRegistry
     from .welle_manager import WelleManager
 
@@ -20,9 +21,11 @@ class Scanner:
         self,
         welle_manager: "WelleManager",
         station_registry: "StationRegistry",
+        activity_log: "ActivityLog | None" = None,
     ) -> None:
         self._welle = welle_manager
         self._registry = station_registry
+        self._activity_log = activity_log
         self._scanning: bool = False
         self._cancelled: bool = False
         self._current_channel: str | None = None
@@ -61,6 +64,13 @@ class Scanner:
             logger.info("Scan cancellation requested")
             self._cancelled = True
 
+    async def _log(self, level: str, message: str) -> None:
+        """Log to both Python logger and activity log."""
+        log_level = "warning" if level == "warn" else level
+        getattr(logger, log_level, logger.info)(message)
+        if self._activity_log:
+            await self._activity_log.add(level, message)
+
     async def _run_scan(self, channels: list[str]) -> list:
         """Execute a scan over the given list of channel labels."""
         if self._scanning:
@@ -74,12 +84,12 @@ class Scanner:
         self._stations_found = 0
         all_stations: list[dict] = []
 
-        logger.info("Starting scan of %d channels", len(channels))
+        await self._log("info", f"Starting scan of {len(channels)} channels")
 
         try:
             for channel in channels:
                 if self._cancelled:
-                    logger.info("Scan cancelled after %d channels", self._channels_scanned)
+                    await self._log("info", f"Scan cancelled after {self._channels_scanned} channels")
                     break
 
                 self._current_channel = channel
@@ -87,21 +97,19 @@ class Scanner:
                 all_stations.extend(found)
                 self._stations_found += len(found)
                 self._channels_scanned += 1
-                logger.info(
-                    "Channel %s: found %d stations (%d/%d)",
-                    channel,
-                    len(found),
-                    self._channels_scanned,
-                    self._channels_total,
-                )
+
+                if found:
+                    names = ", ".join(s["name"] for s in found)
+                    await self._log("info", f"Channel {channel}: found {len(found)} stations ({names})")
+                else:
+                    await self._log("info", f"Channel {channel}: no stations")
         finally:
             self._scanning = False
             self._current_channel = None
 
-        logger.info(
-            "Scan complete: %d stations found across %d channels",
-            len(all_stations),
-            self._channels_scanned,
+        await self._log(
+            "info",
+            f"Scan complete: {len(all_stations)} stations found across {self._channels_scanned} channels",
         )
         return all_stations
 
@@ -109,14 +117,14 @@ class Scanner:
         """Tune to a channel, wait for lock, then extract discovered services."""
         tuned = await self._welle.tune(channel)
         if not tuned:
-            logger.warning("Failed to tune to channel %s", channel)
+            await self._log("warn", f"Failed to tune to channel {channel}")
             return []
 
         await asyncio.sleep(SCAN_DWELL_TIME)
 
         mux_data = await self._welle.get_mux_json()
         if mux_data is None:
-            logger.debug("No mux data for channel %s", channel)
+            await self._log("info", f"No signal on channel {channel}")
             return []
 
         stations = self._parse_services(mux_data, channel)

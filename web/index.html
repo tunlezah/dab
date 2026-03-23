@@ -55,10 +55,19 @@
         <div id="stations-container"></div>
     </section>
 
+    <!-- Activity Log (collapsible) -->
+    <section id="log-section">
+        <button id="log-toggle" class="btn btn-log-toggle">Show Logs</button>
+        <div id="log-panel" class="hidden">
+            <div id="log-entries"></div>
+        </div>
+    </section>
+
     <!-- System Status Footer -->
     <footer id="system-status">
         <span id="sdr-status"></span>
         <span id="welle-status"></span>
+        <span id="app-version" class="version-label"></span>
     </footer>
 
     <script src="/static/app.js"></script>
