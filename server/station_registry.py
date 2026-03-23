@@ -1,17 +1,65 @@
-"""In-memory station storage for discovered DAB+ services."""
+"""In-memory station storage for discovered DAB+ services, with JSON persistence."""
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
 class StationRegistry:
-    """Thread-safe in-memory store of discovered DAB+ stations."""
+    """Thread-safe in-memory store of discovered DAB+ stations.
 
-    def __init__(self) -> None:
+    Optionally backed by a JSON file so stations survive restarts.
+    """
+
+    def __init__(self, persist_path: Path | None = None) -> None:
         self._stations: dict[str, dict] = {}
         self._lock: asyncio.Lock = asyncio.Lock()
+        self._persist_path = persist_path
+
+    async def load(self) -> int:
+        """Load stations from the JSON file. Returns count loaded."""
+        if not self._persist_path or not self._persist_path.exists():
+            return 0
+
+        try:
+            raw = self._persist_path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            if not isinstance(data, list):
+                logger.warning("stations.json has unexpected format, ignoring")
+                return 0
+
+            async with self._lock:
+                for station in data:
+                    sid = station.get("id")
+                    if sid:
+                        self._stations[sid] = station
+
+            count = len(self._stations)
+            logger.info("Loaded %d stations from %s", count, self._persist_path)
+            return count
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to load stations file: %s", exc)
+            return 0
+
+    async def save(self) -> None:
+        """Save current stations to the JSON file."""
+        if not self._persist_path:
+            return
+
+        try:
+            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+            async with self._lock:
+                data = list(self._stations.values())
+            self._persist_path.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            logger.debug("Saved %d stations to %s", len(data), self._persist_path)
+        except OSError as exc:
+            logger.warning("Failed to save stations file: %s", exc)
 
     async def add_station(self, station: dict) -> None:
         """Add or update a station entry.

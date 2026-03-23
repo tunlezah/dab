@@ -1,9 +1,14 @@
 """Configuration management for DAB+ radio web application."""
 
 import os
+from pathlib import Path
 
 # App version — display only, bump manually on release
 APP_VERSION = "1.0.0"
+
+# Data directory for persisted files (stations list, etc.)
+_project_root = Path(__file__).resolve().parent.parent
+DATA_DIR: Path = Path(os.environ.get("DAB_DATA_DIR", _project_root / "data"))
 
 # welle-cli internal HTTP port
 WELLE_CLI_PORT: int = int(os.environ.get("WELLE_CLI_PORT", "7979"))

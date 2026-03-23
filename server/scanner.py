@@ -115,6 +115,10 @@ class Scanner:
             "info",
             f"Scan complete: {len(all_stations)} stations found across {self._channels_scanned} channels",
         )
+
+        # Persist stations to disk
+        await self._registry.save()
+
         return all_stations
 
     async def _scan_channel(self, channel: str) -> list[dict]:

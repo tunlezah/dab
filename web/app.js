@@ -288,7 +288,8 @@ function updateNowPlaying(meta) {
     }
 
     if (meta.snr !== undefined) {
-        snrValue.textContent = `SNR: ${meta.snr} dB`;
+        snrValue.textContent = meta.snr != null ? `SNR: ${meta.snr} dB` : '';
+        updateSignalBars(meta.snr);
     }
 
     if (meta.bitrate !== undefined) {
@@ -367,6 +368,24 @@ function escapeHtml(str) {
     const el = document.createElement('span');
     el.textContent = str;
     return el.innerHTML;
+}
+
+function updateSignalBars(snr) {
+    const el = document.getElementById('signal-strength');
+    if (!el) return;
+
+    // Map SNR (dB) to 0-4 bars
+    // 0-3: no bars, 3-8: 1 bar (poor), 8-14: 2 bars (fair), 14-20: 3 bars (good), 20+: 4 bars (excellent)
+    let level = 0;
+    if (snr != null && snr > 0) {
+        if (snr >= 20) level = 4;
+        else if (snr >= 14) level = 3;
+        else if (snr >= 8) level = 2;
+        else if (snr >= 3) level = 1;
+    }
+
+    el.setAttribute('data-level', level);
+    el.title = snr != null ? `Signal: ${snr} dB SNR` : 'No signal';
 }
 
 // ---- Activity Log ----
