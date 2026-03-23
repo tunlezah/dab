@@ -159,6 +159,10 @@ header h1 {
     border-radius: 4px;
 }
 
+#signal-info span:empty {
+    display: none;
+}
+
 #playback-controls {
     flex: 0 0 100%;
     display: flex;

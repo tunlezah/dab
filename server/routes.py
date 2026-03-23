@@ -16,6 +16,19 @@ from .activity_log import ActivityLog
 
 logger = logging.getLogger(__name__)
 
+
+def _extract_label(value) -> str:
+    """Extract a label string from welle-cli data.
+
+    welle-cli may return labels as plain strings or as dicts like:
+    {"label": "ABC NSW DAB", "shortlabel": "ABC", ...}
+    """
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        return (value.get("label") or value.get("fig2label") or "").strip()
+    return ""
+
 router = APIRouter(prefix="/api")
 
 # Module-level references set by setup()
@@ -195,8 +208,8 @@ async def get_metadata() -> dict:
     # Extract ensemble name
     ensemble_name = None
     ensemble = mux.get("ensemble")
-    if ensemble:
-        ensemble_name = ensemble.get("label")
+    if isinstance(ensemble, dict):
+        ensemble_name = _extract_label(ensemble.get("label", "")) or None
 
     # Extract SNR from demodulator
     snr = None
@@ -208,14 +221,20 @@ async def get_metadata() -> dict:
     station_name = None
     bitrate = None
     dls = None
+    mode = None
+    has_slide = False
 
     services = mux.get("services", [])
     for service in services:
         sid = service.get("sid", "")
         if sid == service_id:
-            station_name = service.get("label")
+            station_name = _extract_label(service.get("label", "")) or None
             bitrate = service.get("bitrate")
             dls = service.get("dls_label", service.get("dls", ""))
+            if isinstance(dls, dict):
+                dls = _extract_label(dls)
+            mode = service.get("mode", "")
+            has_slide = bool(service.get("mot", {}).get("data") if isinstance(service.get("mot"), dict) else False)
             if not bitrate:
                 components = service.get("components", [])
                 for comp in components:
@@ -231,7 +250,8 @@ async def get_metadata() -> dict:
         "ensemble": ensemble_name,
         "channel": _welle.current_channel,
         "bitrate": bitrate,
+        "mode": mode,
         "dls": dls,
         "snr": snr,
-        "mot_image": f"/api/slide/{service_id}" if service_id else None,
+        "mot_image": f"/api/slide/{service_id}" if has_slide else None,
     }
