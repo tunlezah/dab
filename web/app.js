@@ -308,12 +308,13 @@ function updateNowPlaying(meta) {
     }
 
     // Slide image
-    const slideUrl = meta.mot_image || meta.slide || meta.slideUrl || meta.slideImage || null;
+    const slideUrl = meta.mot_image || null;
+    const existingImg = slideImage.querySelector('img');
     if (slideUrl) {
-        if (!slideImage.querySelector('img') || slideImage.querySelector('img').src !== slideUrl) {
+        if (!existingImg || !existingImg.src.endsWith(slideUrl)) {
             slideImage.innerHTML = `<img src="${escapeHtml(slideUrl)}" alt="Slide">`;
         }
-    } else {
+    } else if (existingImg) {
         slideImage.innerHTML = '';
     }
 }
