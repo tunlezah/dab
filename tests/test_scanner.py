@@ -116,6 +116,46 @@ def test_parse_services(scanner):
     assert station["dls"] == "Now Playing: Song"
 
 
+def test_parse_services_dict_labels(scanner):
+    """Test parsing when welle-cli returns labels as nested dicts (real format)."""
+    mux = {
+        "ensemble": {
+            "label": {
+                "label": "ABC NSW DAB",
+                "shortlabel": "ABC",
+                "fig2label": "",
+                "fig2charset": "Undefined",
+                "fig2rfu": False,
+            },
+            "id": "0x1001",
+            "ecc": "0x00",
+        },
+        "services": [
+            {
+                "sid": "0x1301",
+                "label": {
+                    "label": "triple j",
+                    "shortlabel": "trplj",
+                    "fig2label": "",
+                    "fig2charset": "Undefined",
+                    "fig2rfu": False,
+                },
+                "dls_label": "Now Playing: Song",
+                "mode": "DAB+",
+                "components": [{"subchannel": {"bitrate": 128}}],
+            }
+        ],
+        "demodulator": {"snr": 15.2},
+    }
+
+    stations = scanner._parse_services(mux, "9A")
+
+    assert len(stations) == 1
+    assert stations[0]["name"] == "triple j"
+    assert stations[0]["ensemble"] == "ABC NSW DAB"
+    assert stations[0]["bitrate"] == 128
+
+
 @pytest.mark.asyncio
 async def test_cancel_scan(mock_welle_manager, registry, sample_mux_data):
     call_count = 0

@@ -199,9 +199,6 @@ for item in server web requirements.txt; do
     fi
 done
 
-# Write version file so the app can display it
-echo "$VERSION" > "$INSTALL_DIR/VERSION"
-
 if [[ ! -d "$INSTALL_DIR/venv" ]]; then
     python3 -m venv "$INSTALL_DIR/venv"
 fi
