@@ -16,6 +16,7 @@ from .welle_manager import WelleManager
 from .scanner import Scanner
 from .station_registry import StationRegistry
 from .audio_manager import AudioManager
+from .activity_log import ActivityLog
 from . import routes
 
 logger = logging.getLogger(__name__)
@@ -35,18 +36,34 @@ async def lifespan(app: FastAPI):
 
     welle = WelleManager()
     registry = StationRegistry()
-    scanner = Scanner(welle, registry)
+    activity_log = ActivityLog()
+    scanner = Scanner(welle, registry, activity_log)
     audio = AudioManager(welle)
 
-    routes.setup(welle, scanner, registry, audio)
+    routes.setup(welle, scanner, registry, audio, activity_log)
 
     app.state.welle = welle
     app.state.scanner = scanner
     app.state.registry = registry
     app.state.audio = audio
+    app.state.activity_log = activity_log
+
+    logger.info("Detecting RTL-SDR device...")
+    device = await welle.detect_device_name()
+    if device:
+        await activity_log.add("info", f"RTL-SDR device detected: {device}")
+        logger.info("RTL-SDR device: %s", device)
+    else:
+        await activity_log.add("warn", "No RTL-SDR device detected")
+        logger.warning("No RTL-SDR device detected")
 
     logger.info("Starting welle-cli on default channel 9A")
-    await welle.start(channel="9A")
+    await activity_log.add("info", "Starting welle-cli on channel 9A")
+    started = await welle.start(channel="9A")
+    if started:
+        await activity_log.add("info", "welle-cli started successfully")
+    else:
+        await activity_log.add("error", "Failed to start welle-cli - check SDR device connection")
     logger.info("DAB+ radio web application started on port %d", WEB_PORT)
 
     yield

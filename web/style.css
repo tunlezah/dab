@@ -365,6 +365,82 @@ header h1 {
     to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+/* Activity Log */
+#log-section {
+    margin: 0.75rem 1rem;
+}
+
+.btn-log-toggle {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.75rem;
+    padding: 0.3rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color var(--transition), border-color var(--transition);
+}
+
+.btn-log-toggle:hover {
+    color: var(--text-secondary);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+#log-panel {
+    margin-top: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.72rem;
+    line-height: 1.6;
+}
+
+#log-entries {
+    padding: 0.5rem 0.75rem;
+}
+
+.log-entry {
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.log-entry.log-warn {
+    color: #f0ad4e;
+}
+
+.log-entry.log-error {
+    color: var(--highlight);
+}
+
+.log-entry .log-time {
+    color: rgba(255, 255, 255, 0.25);
+    margin-right: 0.5rem;
+}
+
+#log-panel::-webkit-scrollbar {
+    width: 4px;
+}
+
+#log-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#log-panel::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+/* SDR device name */
+.sdr-device-name {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.3);
+    margin-left: 0.25rem;
+}
+
 /* Footer */
 #system-status {
     margin-top: auto;

@@ -12,6 +12,7 @@ from .welle_manager import WelleManager
 from .scanner import Scanner
 from .station_registry import StationRegistry
 from .audio_manager import AudioManager
+from .activity_log import ActivityLog
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +23,13 @@ _welle: WelleManager = None
 _scanner: Scanner = None
 _registry: StationRegistry = None
 _audio: AudioManager = None
+_activity_log: ActivityLog = None
 
 
-def setup(welle: WelleManager, scanner: Scanner, registry: StationRegistry, audio: AudioManager) -> None:
+def setup(welle: WelleManager, scanner: Scanner, registry: StationRegistry, audio: AudioManager, activity_log: ActivityLog) -> None:
     """Inject dependencies into the routes module."""
-    global _welle, _scanner, _registry, _audio
-    _welle, _scanner, _registry, _audio = welle, scanner, registry, audio
+    global _welle, _scanner, _registry, _audio, _activity_log
+    _welle, _scanner, _registry, _audio, _activity_log = welle, scanner, registry, audio, activity_log
 
 
 @router.get("/status")
@@ -47,6 +49,7 @@ async def get_status() -> dict:
         "playing": _audio.current_service_id,
         "output_mode": _audio.output_mode,
         "signal_snr": snr,
+        "sdr_device_name": _welle.device_name,
     }
 
 
@@ -68,6 +71,13 @@ async def start_scan(mode: str = Query(default="full")) -> dict:
 async def scan_progress() -> dict:
     """Return current scan progress."""
     return _scanner.progress
+
+
+@router.get("/logs")
+async def get_logs(after: int = Query(default=0)) -> dict:
+    """Return activity log entries after a given sequence number."""
+    entries = await _activity_log.get_since(after)
+    return {"entries": entries}
 
 
 @router.get("/stations")

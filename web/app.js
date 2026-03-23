@@ -4,6 +4,9 @@ let isScanning = false;
 let stations = [];
 let metadataInterval = null;
 let scanInterval = null;
+let logLastSeq = 0;
+let logVisible = false;
+let logInterval = null;
 
 const audio = document.getElementById('audio-player');
 
@@ -27,6 +30,9 @@ const outputMode = document.getElementById('output-mode');
 const scanPopularBtn = document.getElementById('scan-popular-btn');
 const scanAllBtn = document.getElementById('scan-all-btn');
 const stopBtn = document.getElementById('stop-btn');
+const logToggle = document.getElementById('log-toggle');
+const logPanel = document.getElementById('log-panel');
+const logEntries = document.getElementById('log-entries');
 
 // ---- API helpers ----
 
@@ -57,7 +63,9 @@ async function fetchStatus() {
         const sdrOk = data.sdr_connected || data.sdrConnected || false;
         const welleOk = data.welle_running || data.welleRunning || false;
 
-        sdrStatus.innerHTML = `<span class="status-dot ${sdrOk ? 'connected' : 'disconnected'}"></span> SDR`;
+        const deviceName = data.sdr_device_name || '';
+        const deviceLabel = deviceName ? `<span class="sdr-device-name">(${escapeHtml(deviceName)})</span>` : '';
+        sdrStatus.innerHTML = `<span class="status-dot ${sdrOk ? 'connected' : 'disconnected'}"></span> SDR ${deviceLabel}`;
         welleStatus.innerHTML = `<span class="status-dot ${welleOk ? 'connected' : 'disconnected'}"></span> welle.io`;
 
         statusIndicator.innerHTML = sdrOk && welleOk
@@ -354,12 +362,57 @@ function escapeHtml(str) {
     return el.innerHTML;
 }
 
+// ---- Activity Log ----
+
+function toggleLog() {
+    logVisible = !logVisible;
+    logPanel.classList.toggle('hidden', !logVisible);
+    logToggle.textContent = logVisible ? 'Hide Logs' : 'Show Logs';
+
+    if (logVisible) {
+        pollLogs();
+        if (!logInterval) {
+            logInterval = setInterval(pollLogs, 2000);
+        }
+    } else {
+        if (logInterval) {
+            clearInterval(logInterval);
+            logInterval = null;
+        }
+    }
+}
+
+async function pollLogs() {
+    try {
+        const data = await apiFetch(`/api/logs?after=${logLastSeq}`);
+        if (!data || !data.entries || data.entries.length === 0) return;
+
+        for (const entry of data.entries) {
+            const el = document.createElement('div');
+            el.className = `log-entry log-${entry.level}`;
+
+            const ts = new Date(entry.ts * 1000);
+            const timeStr = ts.toLocaleTimeString();
+
+            el.innerHTML = `<span class="log-time">${timeStr}</span>${escapeHtml(entry.message)}`;
+            logEntries.appendChild(el);
+            logLastSeq = entry.seq;
+        }
+
+        // Auto-scroll to bottom
+        logPanel.scrollTop = logPanel.scrollHeight;
+    } catch {
+        // Silently fail
+    }
+}
+
 // ---- Event Listeners ----
 
 scanPopularBtn.addEventListener('click', () => startScan('popular'));
 scanAllBtn.addEventListener('click', () => startScan('all'));
 stopBtn.addEventListener('click', stopPlayback);
 outputMode.addEventListener('change', handleOutputChange);
+logToggle.addEventListener('click', toggleLog);
 
 // ---- Initialization ----
 
