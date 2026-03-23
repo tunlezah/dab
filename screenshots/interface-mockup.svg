@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 680" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <linearGradient id="progress-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#0f3460"/>
+      <stop offset="100%" style="stop-color:#e94560"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="680" fill="#1a1a2e" rx="8"/>
+
+  <!-- Header -->
+  <rect width="900" height="52" fill="#16213e"/>
+  <line x1="0" y1="52" x2="900" y2="52" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="24" y="33" fill="#eee" font-size="20" font-weight="600" letter-spacing="0.4">DAB+ Radio</text>
+  <!-- Status indicator -->
+  <circle cx="836" cy="26" r="4" fill="#2ecc71"/>
+  <text x="848" y="30" fill="#aab" font-size="11">Connected</text>
+
+  <!-- Now Playing Panel -->
+  <rect x="16" y="64" width="868" height="155" rx="10" fill="#16213e" filter="url(#shadow)"/>
+
+  <!-- Slide image placeholder -->
+  <rect x="32" y="80" width="110" height="110" rx="8" fill="#0f3460" opacity="0.5"/>
+  <text x="87" y="132" fill="#778" font-size="10" text-anchor="middle">MOT</text>
+  <text x="87" y="145" fill="#778" font-size="10" text-anchor="middle">Artwork</text>
+
+  <!-- Station info -->
+  <text x="160" y="102" fill="#eee" font-size="22" font-weight="700">triple j</text>
+  <text x="160" y="122" fill="#aab" font-size="13">ABC NSW DAB</text>
+  <text x="160" y="146" fill="#eee" font-size="15" font-style="italic">Now Playing: Like A Version - Glass Animals</text>
+
+  <!-- Signal badges -->
+  <rect x="160" y="156" width="80" height="22" rx="4" fill="rgba(255,255,255,0.05)"/>
+  <text x="200" y="171" fill="#778" font-size="11" text-anchor="middle">SNR: 18.4 dB</text>
+  <rect x="248" y="156" width="65" height="22" rx="4" fill="rgba(255,255,255,0.05)"/>
+  <text x="280" y="171" fill="#778" font-size="11" text-anchor="middle">128 kbps</text>
+  <rect x="321" y="156" width="48" height="22" rx="4" fill="rgba(255,255,255,0.05)"/>
+  <text x="345" y="171" fill="#778" font-size="11" text-anchor="middle">DAB+</text>
+
+  <!-- Playback controls -->
+  <line x1="32" y1="195" x2="868" y2="195" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <rect x="32" y="201" width="60" height="30" rx="6" fill="#e94560"/>
+  <text x="62" y="220" fill="#fff" font-size="13" font-weight="500" text-anchor="middle">Stop</text>
+  <rect x="100" y="201" width="130" height="30" rx="6" fill="#0f3460" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+  <text x="165" y="220" fill="#eee" font-size="12" text-anchor="middle">Browser Audio</text>
+
+  <!-- Scan Controls Panel -->
+  <rect x="16" y="232" width="868" height="75" rx="10" fill="#16213e" filter="url(#shadow)"/>
+  <rect x="32" y="248" width="140" height="34" rx="6" fill="#0f3460"/>
+  <text x="102" y="269" fill="#eee" font-size="13" font-weight="500" text-anchor="middle">Quick Scan (9A-9C)</text>
+  <rect x="180" y="248" width="130" height="34" rx="6" fill="transparent" stroke="#0f3460" stroke-width="1"/>
+  <text x="245" y="269" fill="#eee" font-size="13" font-weight="500" text-anchor="middle">Full Band Scan</text>
+
+  <!-- Progress bar -->
+  <rect x="32" y="290" width="836" height="6" rx="3" fill="rgba(255,255,255,0.08)"/>
+  <rect x="32" y="290" width="545" height="6" rx="3" fill="url(#progress-grad)"/>
+  <text x="32" y="308" fill="#aab" font-size="12">Scanning (12B)... 65% -- 24 stations found</text>
+
+  <!-- Stations Header -->
+  <rect x="16" y="320" width="868" height="348" rx="10" fill="#16213e" filter="url(#shadow)"/>
+  <text x="32" y="348" fill="#eee" font-size="16" font-weight="600">Stations</text>
+
+  <!-- Station Cards - Row 1 -->
+  <rect x="32" y="360" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="#e94560" stroke-width="1"/>
+  <text x="44" y="382" fill="#eee" font-size="14" font-weight="600">triple j</text>
+  <text x="44" y="398" fill="#aab" font-size="11">ABC NSW DAB</text>
+  <text x="44" y="414" fill="#778" font-size="10">9A  &#8226;  128 kbps  &#8226;  DAB+</text>
+  <text x="44" y="434" fill="#aab" font-size="11" font-style="italic">Like A Version - Glass Animals</text>
+
+  <rect x="314" y="360" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="326" y="382" fill="#eee" font-size="14" font-weight="600">ABC News</text>
+  <text x="326" y="398" fill="#aab" font-size="11">ABC NSW DAB</text>
+  <text x="326" y="414" fill="#778" font-size="10">9A  &#8226;  80 kbps  &#8226;  DAB+</text>
+  <text x="326" y="434" fill="#aab" font-size="11" font-style="italic">ABC News 24/7</text>
+
+  <rect x="596" y="360" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="608" y="382" fill="#eee" font-size="14" font-weight="600">Double J</text>
+  <text x="608" y="398" fill="#aab" font-size="11">ABC NSW DAB</text>
+  <text x="608" y="414" fill="#778" font-size="10">9A  &#8226;  128 kbps  &#8226;  DAB+</text>
+  <text x="608" y="434" fill="#aab" font-size="11" font-style="italic">Music for the curious</text>
+
+  <!-- Station Cards - Row 2 -->
+  <rect x="32" y="458" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="44" y="480" fill="#eee" font-size="14" font-weight="600">KIIS 1065</text>
+  <text x="44" y="496" fill="#aab" font-size="11">SCA Sydney DAB</text>
+  <text x="44" y="512" fill="#778" font-size="10">9B  &#8226;  64 kbps  &#8226;  DAB+</text>
+  <text x="44" y="532" fill="#aab" font-size="11" font-style="italic">Sydney's Hit Music Station</text>
+
+  <rect x="314" y="458" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="326" y="480" fill="#eee" font-size="14" font-weight="600">smooth 95.3</text>
+  <text x="326" y="496" fill="#aab" font-size="11">NOVA Sydney DAB</text>
+  <text x="326" y="512" fill="#778" font-size="10">9C  &#8226;  80 kbps  &#8226;  DAB+</text>
+  <text x="326" y="532" fill="#aab" font-size="11" font-style="italic">Easy Favourites</text>
+
+  <rect x="596" y="458" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="608" y="480" fill="#eee" font-size="14" font-weight="600">ABC Classic</text>
+  <text x="608" y="496" fill="#aab" font-size="11">ABC NSW DAB</text>
+  <text x="608" y="512" fill="#778" font-size="10">9A  &#8226;  128 kbps  &#8226;  DAB+</text>
+  <text x="608" y="532" fill="#aab" font-size="11" font-style="italic">Classical music all day</text>
+
+  <!-- Station Cards - Row 3 (partial) -->
+  <rect x="32" y="556" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="44" y="578" fill="#eee" font-size="14" font-weight="600">ABC Jazz</text>
+  <text x="44" y="594" fill="#aab" font-size="11">ABC NSW DAB</text>
+  <text x="44" y="610" fill="#778" font-size="10">9A  &#8226;  80 kbps  &#8226;  DAB+</text>
+  <text x="44" y="630" fill="#aab" font-size="11" font-style="italic">Australia's home of jazz</text>
+
+  <rect x="314" y="556" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="326" y="578" fill="#eee" font-size="14" font-weight="600">triple j Unearthed</text>
+  <text x="326" y="594" fill="#aab" font-size="11">ABC NSW DAB</text>
+  <text x="326" y="610" fill="#778" font-size="10">9A  &#8226;  48 kbps  &#8226;  DAB+</text>
+  <text x="326" y="630" fill="#aab" font-size="11" font-style="italic">New music first</text>
+
+  <rect x="596" y="556" width="270" height="88" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="608" y="578" fill="#eee" font-size="14" font-weight="600">WSFM</text>
+  <text x="608" y="594" fill="#aab" font-size="11">ARN Sydney DAB</text>
+  <text x="608" y="610" fill="#778" font-size="10">9C  &#8226;  64 kbps  &#8226;  DAB+</text>
+  <text x="608" y="630" fill="#aab" font-size="11" font-style="italic">Pure Gold</text>
+
+  <!-- Footer -->
+  <line x1="0" y1="660" x2="900" y2="660" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+  <circle cx="380" cy="672" r="3.5" fill="#2ecc71"/>
+  <text x="388" y="676" fill="#778" font-size="11">SDR</text>
+  <circle cx="440" cy="672" r="3.5" fill="#2ecc71"/>
+  <text x="448" y="676" fill="#778" font-size="11">welle.io</text>
+</svg>
