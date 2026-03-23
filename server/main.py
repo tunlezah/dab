@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .config import WEB_PORT
+from .config import DATA_DIR, WEB_PORT
 from .welle_manager import WelleManager
 from .scanner import Scanner
 from .station_registry import StationRegistry
@@ -35,10 +35,16 @@ async def lifespan(app: FastAPI):
     )
 
     welle = WelleManager()
-    registry = StationRegistry()
+    registry = StationRegistry(persist_path=DATA_DIR / "stations.json")
     activity_log = ActivityLog()
     scanner = Scanner(welle, registry, activity_log)
     audio = AudioManager(welle)
+
+    # Load previously discovered stations
+    loaded = await registry.load()
+    if loaded:
+        await activity_log.add("info", f"Loaded {loaded} stations from previous scan")
+
 
     routes.setup(welle, scanner, registry, audio, activity_log)
 

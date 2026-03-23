@@ -163,6 +163,46 @@ header h1 {
     display: none;
 }
 
+/* Signal strength bars */
+.signal-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+    padding: 0 0.4rem;
+}
+
+.signal-bar {
+    width: 4px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    transition: background 0.3s ease;
+}
+
+.signal-bar:nth-child(1) { height: 25%; }
+.signal-bar:nth-child(2) { height: 50%; }
+.signal-bar:nth-child(3) { height: 75%; }
+.signal-bar:nth-child(4) { height: 100%; }
+
+.signal-bars[data-level="1"] .signal-bar:nth-child(1),
+.signal-bars[data-level="2"] .signal-bar:nth-child(1),
+.signal-bars[data-level="2"] .signal-bar:nth-child(2),
+.signal-bars[data-level="3"] .signal-bar:nth-child(1),
+.signal-bars[data-level="3"] .signal-bar:nth-child(2),
+.signal-bars[data-level="3"] .signal-bar:nth-child(3),
+.signal-bars[data-level="4"] .signal-bar {
+    background: #2ecc71;
+}
+
+.signal-bars[data-level="1"] .signal-bar:nth-child(1) {
+    background: var(--highlight);
+}
+
+.signal-bars[data-level="2"] .signal-bar:nth-child(1),
+.signal-bars[data-level="2"] .signal-bar:nth-child(2) {
+    background: #f0ad4e;
+}
+
 #playback-controls {
     flex: 0 0 100%;
     display: flex;
