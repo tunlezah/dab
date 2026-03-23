@@ -93,7 +93,11 @@ class Scanner:
                     break
 
                 self._current_channel = channel
-                found = await self._scan_channel(channel)
+                try:
+                    found = await self._scan_channel(channel)
+                except Exception as exc:
+                    await self._log("error", f"Channel {channel}: scan error — {exc}")
+                    found = []
                 all_stations.extend(found)
                 self._stations_found += len(found)
                 self._channels_scanned += 1
@@ -133,6 +137,19 @@ class Scanner:
 
         return stations
 
+    @staticmethod
+    def _extract_label(value) -> str:
+        """Extract a label string from welle-cli data.
+
+        welle-cli may return labels as plain strings or as dicts like:
+        {"label": "ABC NSW DAB", "shortlabel": "ABC", ...}
+        """
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, dict):
+            return (value.get("label") or value.get("fig2label") or "").strip()
+        return ""
+
     def _parse_services(self, mux_data: dict, channel: str) -> list[dict]:
         """Extract station information from a welle-cli mux.json response."""
         stations: list[dict] = []
@@ -140,7 +157,7 @@ class Scanner:
 
         ensemble = mux_data.get("ensemble")
         if isinstance(ensemble, dict):
-            ensemble_label = ensemble.get("label", "").strip()
+            ensemble_label = self._extract_label(ensemble.get("label", ""))
 
         services = mux_data.get("services")
         if not isinstance(services, list):
@@ -151,7 +168,7 @@ class Scanner:
                 continue
 
             sid = svc.get("sid")
-            name = svc.get("label", "").strip()
+            name = self._extract_label(svc.get("label", ""))
             if not sid or not name:
                 continue
 
