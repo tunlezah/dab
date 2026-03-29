@@ -252,23 +252,23 @@ class CastController:
                     device.name, exc,
                 )
 
-            # Fallback: RAOP audio push
-            # Stop the AAC stream, start a PCM stream instead
+            # Fallback: RAOP audio push via pyatv's stream_file
+            # pyatv accepts MP3 directly and handles ALAC transcoding internally.
+            # MP3 is the recommended format for buffer/pipe streaming (no seeking required).
+            # Stop the AAC stream, start an MP3 passthrough instead
             await self._stream_manager.stop_stream(stream_session.session_id)
             stream_session = await self._stream_manager.start_stream(
                 service_id=service_id,
-                target_format="pcm",
+                target_format="mp3",
                 device_id=device.id,
             )
             session.stream_session_id = stream_session.session_id
 
-            # For RAOP, we need to write a temporary file or use stream_file
-            # pyatv's stream_file works best with a file path
-            # We'll create a named pipe (FIFO) for real-time streaming
+            # Create a named pipe (FIFO) to feed the MP3 stream to pyatv
             import tempfile
             import os
 
-            fifo_path = os.path.join(tempfile.gettempdir(), f"dab_airplay_{device.id}.pcm")
+            fifo_path = os.path.join(tempfile.gettempdir(), f"dab_airplay_{device.id}.mp3")
             if os.path.exists(fifo_path):
                 os.unlink(fifo_path)
             os.mkfifo(fifo_path)
