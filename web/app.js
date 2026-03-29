@@ -388,6 +388,141 @@ function updateSignalBars(snr) {
     el.title = snr != null ? `Signal: ${snr} dB SNR` : 'No signal';
 }
 
+// ---- Casting ----
+
+let castDevices = [];
+let castSessions = [];
+let castStatusInterval = null;
+
+const scanDevicesBtn = document.getElementById('scan-devices-btn');
+const deviceScanStatus = document.getElementById('device-scan-status');
+const deviceList = document.getElementById('device-list');
+const activeCasts = document.getElementById('active-casts');
+
+async function scanDevices() {
+    scanDevicesBtn.disabled = true;
+    deviceScanStatus.textContent = 'Scanning...';
+
+    try {
+        const data = await apiFetch('/api/devices/scan', { method: 'POST' });
+        castDevices = data && data.devices ? data.devices : [];
+        deviceScanStatus.textContent = `Found ${castDevices.length} device(s)`;
+        renderDevices();
+    } catch (err) {
+        deviceScanStatus.textContent = 'Scan failed';
+        showError('Device scan failed: ' + err.message);
+    } finally {
+        scanDevicesBtn.disabled = false;
+    }
+}
+
+function renderDevices() {
+    if (!castDevices || castDevices.length === 0) {
+        deviceList.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem;">No devices found. Make sure Chromecast/AirPlay devices are on the same network.</p>';
+        return;
+    }
+
+    deviceList.innerHTML = castDevices.map(d => {
+        const typeLabel = d.device_type === 'chromecast' ? 'Chromecast' : 'AirPlay';
+        const typeClass = d.device_type === 'chromecast' ? 'device-chromecast' : 'device-airplay';
+        const isActive = castSessions.some(s => s.device_id === d.id && s.status === 'playing');
+        const canCast = currentStation != null;
+
+        return `
+            <div class="device-card ${typeClass} ${isActive ? 'casting' : ''}">
+                <div class="device-info">
+                    <span class="device-type-badge">${escapeHtml(typeLabel)}</span>
+                    <span class="device-name">${escapeHtml(d.name)}</span>
+                    ${d.model ? `<span class="device-model">${escapeHtml(d.model)}</span>` : ''}
+                </div>
+                <div class="device-actions">
+                    ${isActive
+                        ? `<button class="btn btn-stop btn-sm" onclick="stopCast('${d.id}')">Stop</button>`
+                        : `<button class="btn btn-primary btn-sm" onclick="startCast('${d.id}', '${d.device_type}')" ${canCast ? '' : 'disabled'} title="${canCast ? 'Cast current station' : 'Select a station first'}">Cast</button>`
+                    }
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function startCast(deviceId, deviceType) {
+    if (!currentStation) {
+        showError('Select a station first before casting');
+        return;
+    }
+
+    const endpoint = deviceType === 'chromecast' ? '/api/cast/chromecast' : '/api/cast/airplay';
+
+    try {
+        await apiFetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId, service_id: currentStation }),
+        });
+        startCastStatusPolling();
+        await pollCastStatus();
+    } catch (err) {
+        showError('Cast failed: ' + err.message);
+    }
+}
+
+async function stopCast(deviceId) {
+    try {
+        await apiFetch('/api/cast/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId }),
+        });
+        await pollCastStatus();
+    } catch (err) {
+        showError('Failed to stop cast: ' + err.message);
+    }
+}
+
+function startCastStatusPolling() {
+    if (castStatusInterval) return;
+    castStatusInterval = setInterval(pollCastStatus, 3000);
+}
+
+async function pollCastStatus() {
+    try {
+        const data = await apiFetch('/api/cast/status');
+        castSessions = data && data.sessions ? data.sessions : [];
+        renderDevices();
+        renderActiveCasts();
+
+        // Stop polling if no active sessions
+        if (castSessions.length === 0 && castStatusInterval) {
+            clearInterval(castStatusInterval);
+            castStatusInterval = null;
+        }
+    } catch {
+        // Silently fail
+    }
+}
+
+function renderActiveCasts() {
+    const playing = castSessions.filter(s => s.status === 'playing');
+    if (playing.length === 0) {
+        activeCasts.innerHTML = '';
+        return;
+    }
+
+    activeCasts.innerHTML = '<div class="active-casts-header">Active Streams</div>' +
+        playing.map(s => `
+            <div class="active-cast-item">
+                <span class="active-cast-device">${escapeHtml(s.device_name)}</span>
+                <span class="active-cast-station">${escapeHtml(s.station_name)}</span>
+                <button class="btn btn-stop btn-sm" onclick="stopCast('${s.device_id}')">Stop</button>
+            </div>
+        `).join('');
+}
+
+if (scanDevicesBtn) {
+    scanDevicesBtn.addEventListener('click', scanDevices);
+}
+
 // ---- Activity Log ----
 
 function toggleLog() {

@@ -11,12 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .config import DATA_DIR, WEB_PORT
+from .config import DATA_DIR, WEB_PORT, DEVICE_CACHE_TTL, DEVICE_SCAN_TIMEOUT, MAX_STREAMS
 from .welle_manager import WelleManager
 from .scanner import Scanner
 from .station_registry import StationRegistry
 from .audio_manager import AudioManager
 from .activity_log import ActivityLog
+from .device_discovery import DeviceDiscovery
+from .stream_manager import StreamManager
+from .cast_controller import CastController
 from . import routes
 
 logger = logging.getLogger(__name__)
@@ -40,19 +43,38 @@ async def lifespan(app: FastAPI):
     scanner = Scanner(welle, registry, activity_log)
     audio = AudioManager(welle)
 
+    # Casting components
+    discovery = DeviceDiscovery(
+        cache_ttl=DEVICE_CACHE_TTL,
+        scan_timeout=DEVICE_SCAN_TIMEOUT,
+    )
+    stream_mgr = StreamManager(max_streams=MAX_STREAMS)
+    cast_ctrl = CastController(
+        stream_manager=stream_mgr,
+        server_host="",  # Auto-detected per request
+        server_port=WEB_PORT,
+    )
+
     # Load previously discovered stations
     loaded = await registry.load()
     if loaded:
         await activity_log.add("info", f"Loaded {loaded} stations from previous scan")
 
-
-    routes.setup(welle, scanner, registry, audio, activity_log)
+    routes.setup(
+        welle, scanner, registry, audio, activity_log,
+        discovery=discovery,
+        stream_manager=stream_mgr,
+        cast_controller=cast_ctrl,
+    )
 
     app.state.welle = welle
     app.state.scanner = scanner
     app.state.registry = registry
     app.state.audio = audio
     app.state.activity_log = activity_log
+    app.state.discovery = discovery
+    app.state.stream_mgr = stream_mgr
+    app.state.cast_ctrl = cast_ctrl
 
     logger.info("Detecting RTL-SDR device...")
     device = await welle.detect_device_name()
@@ -76,6 +98,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down DAB+ radio web application")
+    await cast_ctrl.stop_all()
+    await stream_mgr.stop_all()
     await audio.stop_server()
     await welle.stop()
     logger.info("Shutdown complete")

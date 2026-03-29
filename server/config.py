@@ -77,6 +77,24 @@ BAND_III_CHANNELS: list[tuple[str, float]] = [
     ("13F", 239.200),
 ]
 
+# --- Casting / Streaming settings ---
+
+# Device discovery cache TTL in seconds
+DEVICE_CACHE_TTL: float = float(os.environ.get("DEVICE_CACHE_TTL", "60.0"))
+
+# Device scan timeout in seconds
+DEVICE_SCAN_TIMEOUT: float = float(os.environ.get("DEVICE_SCAN_TIMEOUT", "8.0"))
+
+# Maximum concurrent transcoding streams
+MAX_STREAMS: int = int(os.environ.get("MAX_STREAMS", "4"))
+
+# Server host for cast stream URLs (devices must reach this address)
+# Default: auto-detect via hostname; override if behind NAT or Docker
+CAST_SERVER_HOST: str = os.environ.get("CAST_SERVER_HOST", "")
+
+# FFmpeg binary path
+FFMPEG_PATH: str = os.environ.get("FFMPEG_PATH", "ffmpeg")
+
 # Channels to scan in quick/popular mode (Sydney metro defaults)
 _popular_env = os.environ.get("POPULAR_CHANNELS", "")
 POPULAR_CHANNELS: list[str] = (

@@ -2,9 +2,10 @@
 
 import asyncio
 import logging
+import socket
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from .config import APP_VERSION, WELLE_CLI_PORT
@@ -13,6 +14,9 @@ from .scanner import Scanner
 from .station_registry import StationRegistry
 from .audio_manager import AudioManager
 from .activity_log import ActivityLog
+from .device_discovery import DeviceDiscovery
+from .stream_manager import StreamManager, CONTENT_TYPES
+from .cast_controller import CastController
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +41,28 @@ _scanner: Scanner = None
 _registry: StationRegistry = None
 _audio: AudioManager = None
 _activity_log: ActivityLog = None
+_discovery: DeviceDiscovery = None
+_stream_mgr: StreamManager = None
+_cast_ctrl: CastController = None
 
 
-def setup(welle: WelleManager, scanner: Scanner, registry: StationRegistry, audio: AudioManager, activity_log: ActivityLog) -> None:
+def setup(
+    welle: WelleManager,
+    scanner: Scanner,
+    registry: StationRegistry,
+    audio: AudioManager,
+    activity_log: ActivityLog,
+    discovery: DeviceDiscovery | None = None,
+    stream_manager: StreamManager | None = None,
+    cast_controller: CastController | None = None,
+) -> None:
     """Inject dependencies into the routes module."""
     global _welle, _scanner, _registry, _audio, _activity_log
+    global _discovery, _stream_mgr, _cast_ctrl
     _welle, _scanner, _registry, _audio, _activity_log = welle, scanner, registry, audio, activity_log
+    _discovery = discovery
+    _stream_mgr = stream_manager
+    _cast_ctrl = cast_controller
 
 
 @router.get("/status")
@@ -255,3 +275,326 @@ async def get_metadata() -> dict:
         "snr": snr,
         "mot_image": f"/api/slide/{service_id}" if has_slide else None,
     }
+
+
+# ---- Casting / Streaming Endpoints ----
+
+
+def _get_server_host(request: Request) -> str:
+    """Determine the server host address for cast stream URLs.
+
+    The casting device needs to reach our server, so we need an address
+    that's accessible from the local network.
+    """
+    from .config import CAST_SERVER_HOST
+    if CAST_SERVER_HOST:
+        return CAST_SERVER_HOST
+
+    # Try to get the host from the request
+    host = request.headers.get("host", "")
+    if host:
+        # Strip port if present
+        return host.split(":")[0]
+
+    # Fallback: detect local IP
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+@router.post("/devices/scan")
+async def scan_devices() -> dict:
+    """Scan for Chromecast and AirPlay devices on the local network.
+
+    Discovery runs for ~8 seconds (configurable) and results are cached.
+    """
+    if _discovery is None:
+        raise HTTPException(status_code=503, detail="Device discovery not available")
+
+    if _discovery.scanning:
+        raise HTTPException(status_code=409, detail="Device scan already in progress")
+
+    await _activity_log.add("info", "Scanning for casting devices...")
+
+    try:
+        devices = await _discovery.scan()
+    except Exception as exc:
+        logger.error("Device scan failed: %s", exc)
+        await _activity_log.add("error", f"Device scan failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    chromecast_count = sum(1 for d in devices if d.device_type == "chromecast")
+    airplay_count = sum(1 for d in devices if d.device_type == "airplay")
+    await _activity_log.add(
+        "info",
+        f"Found {chromecast_count} Chromecast and {airplay_count} AirPlay device(s)",
+    )
+
+    return {
+        "devices": [d.to_dict() for d in devices],
+        "count": len(devices),
+    }
+
+
+@router.get("/devices")
+async def get_devices() -> dict:
+    """Return the cached list of discovered devices."""
+    if _discovery is None:
+        return {"devices": [], "count": 0, "cache_valid": False}
+
+    devices = _discovery.devices
+    return {
+        "devices": [d.to_dict() for d in devices],
+        "count": len(devices),
+        "cache_valid": _discovery.cache_valid,
+    }
+
+
+@router.post("/cast/chromecast")
+async def cast_chromecast(body: dict, request: Request) -> dict:
+    """Start casting to a Chromecast device.
+
+    Body: {"device_id": "...", "service_id": "..."}
+    """
+    if _cast_ctrl is None:
+        raise HTTPException(status_code=503, detail="Casting not available")
+
+    device_id = body.get("device_id")
+    service_id = body.get("service_id")
+    if not device_id or not service_id:
+        raise HTTPException(status_code=400, detail="device_id and service_id required")
+
+    device = _discovery.get_device(device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found. Run a device scan first.")
+
+    if device.device_type != "chromecast":
+        raise HTTPException(status_code=400, detail="Device is not a Chromecast")
+
+    station = await _registry.get_station(service_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    station_name = station.get("name", "DAB+ Radio")
+
+    # Ensure welle-cli is tuned to the right channel
+    channel = station.get("channel")
+    if channel and channel != _welle.current_channel:
+        success = await _welle.tune(channel)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to tune to channel")
+
+    # Update cast controller's server host
+    host = _get_server_host(request)
+    _cast_ctrl._server_host = host
+
+    await _activity_log.add("info", f"Casting '{station_name}' to Chromecast '{device.name}'")
+
+    try:
+        session = await _cast_ctrl.cast_to_chromecast(device, service_id, station_name)
+        return {"status": "playing", "session": session.to_dict()}
+    except RuntimeError as exc:
+        await _activity_log.add("error", f"Chromecast cast failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/cast/airplay")
+async def cast_airplay(body: dict, request: Request) -> dict:
+    """Start casting to an AirPlay device.
+
+    Body: {"device_id": "...", "service_id": "..."}
+    """
+    if _cast_ctrl is None:
+        raise HTTPException(status_code=503, detail="Casting not available")
+
+    device_id = body.get("device_id")
+    service_id = body.get("service_id")
+    if not device_id or not service_id:
+        raise HTTPException(status_code=400, detail="device_id and service_id required")
+
+    device = _discovery.get_device(device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found. Run a device scan first.")
+
+    if device.device_type != "airplay":
+        raise HTTPException(status_code=400, detail="Device is not an AirPlay device")
+
+    station = await _registry.get_station(service_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    station_name = station.get("name", "DAB+ Radio")
+
+    # Ensure welle-cli is tuned to the right channel
+    channel = station.get("channel")
+    if channel and channel != _welle.current_channel:
+        success = await _welle.tune(channel)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to tune to channel")
+
+    # Update cast controller's server host
+    host = _get_server_host(request)
+    _cast_ctrl._server_host = host
+
+    await _activity_log.add("info", f"Casting '{station_name}' to AirPlay '{device.name}'")
+
+    try:
+        session = await _cast_ctrl.cast_to_airplay(device, service_id, station_name)
+        return {"status": "playing", "session": session.to_dict()}
+    except RuntimeError as exc:
+        await _activity_log.add("error", f"AirPlay cast failed: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/cast/stop")
+async def stop_cast(body: dict | None = None) -> dict:
+    """Stop casting to a specific device or all devices.
+
+    Body: {"device_id": "..."} — stops a specific device.
+    No body or empty body — stops all casting sessions.
+    """
+    if _cast_ctrl is None:
+        raise HTTPException(status_code=503, detail="Casting not available")
+
+    device_id = body.get("device_id") if body else None
+
+    if device_id:
+        await _cast_ctrl.stop_cast(device_id)
+        await _activity_log.add("info", f"Stopped casting to device {device_id}")
+    else:
+        await _cast_ctrl.stop_all()
+        await _activity_log.add("info", "Stopped all casting sessions")
+
+    return {"status": "stopped"}
+
+
+@router.get("/cast/status")
+async def get_cast_status() -> dict:
+    """Return status of all active casting sessions."""
+    if _cast_ctrl is None:
+        return {"sessions": []}
+
+    return {"sessions": _cast_ctrl.active_sessions}
+
+
+@router.post("/cast/volume")
+async def set_cast_volume(body: dict) -> dict:
+    """Set volume on a casting device.
+
+    Body: {"device_id": "...", "volume": 0.0-1.0}
+    """
+    if _cast_ctrl is None:
+        raise HTTPException(status_code=503, detail="Casting not available")
+
+    device_id = body.get("device_id")
+    volume = body.get("volume")
+    if not device_id or volume is None:
+        raise HTTPException(status_code=400, detail="device_id and volume required")
+
+    try:
+        await _cast_ctrl.set_volume(device_id, float(volume))
+        return {"status": "ok", "volume": float(volume)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/cast/pause")
+async def pause_cast(body: dict) -> dict:
+    """Pause playback on a casting device.
+
+    Body: {"device_id": "..."}
+    """
+    if _cast_ctrl is None:
+        raise HTTPException(status_code=503, detail="Casting not available")
+
+    device_id = body.get("device_id")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id required")
+
+    await _cast_ctrl.pause(device_id)
+    return {"status": "paused"}
+
+
+@router.post("/cast/resume")
+async def resume_cast(body: dict) -> dict:
+    """Resume playback on a casting device.
+
+    Body: {"device_id": "..."}
+    """
+    if _cast_ctrl is None:
+        raise HTTPException(status_code=503, detail="Casting not available")
+
+    device_id = body.get("device_id")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id required")
+
+    await _cast_ctrl.resume(device_id)
+    return {"status": "playing"}
+
+
+@router.get("/cast/stream/{service_id}/{fmt}")
+async def cast_stream(service_id: str, fmt: str) -> StreamingResponse:
+    """Serve a transcoded audio stream for casting devices.
+
+    This endpoint is called by the casting device (Chromecast/AirPlay),
+    NOT by the browser. The device fetches audio directly from here.
+
+    Supported formats:
+      - mp3: Direct MP3 passthrough from welle-cli
+      - aac: AAC-LC in ADTS container (FFmpeg transcoded)
+      - mpegts: AAC in MPEG-TS container (FFmpeg transcoded)
+    """
+    if _stream_mgr is None:
+        raise HTTPException(status_code=503, detail="Streaming not available")
+
+    if fmt not in CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
+
+    content_type = CONTENT_TYPES[fmt]
+
+    if fmt == "mp3":
+        # Direct proxy from welle-cli (same as existing /api/stream endpoint)
+        url = f"http://localhost:{WELLE_CLI_PORT}/mp3/{service_id}"
+
+        async def generate_mp3():
+            async with httpx.AsyncClient(timeout=None) as client:
+                try:
+                    async with client.stream("GET", url) as response:
+                        async for chunk in response.aiter_bytes(chunk_size=4096):
+                            yield chunk
+                except httpx.HTTPError as exc:
+                    logger.error("Cast stream proxy error: %s", exc)
+
+        return StreamingResponse(
+            generate_mp3(),
+            media_type=content_type,
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    # For transcoded formats, start an on-demand FFmpeg session
+    try:
+        session = await _stream_mgr.start_stream(
+            service_id=service_id,
+            target_format=fmt,
+            device_id=None,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    async def generate_transcoded():
+        try:
+            async for chunk in _stream_mgr.read_stream(session.session_id):
+                yield chunk
+        finally:
+            await _stream_mgr.stop_stream(session.session_id)
+
+    return StreamingResponse(
+        generate_transcoded(),
+        media_type=content_type,
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
