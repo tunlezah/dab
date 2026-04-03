@@ -47,8 +47,8 @@ async def test_get_all_stations(registry):
 
 @pytest.mark.asyncio
 async def test_update_existing_station(registry):
-    station_v1 = {"id": "0x1301", "name": "triple j", "dls": "Old DLS"}
-    station_v2 = {"id": "0x1301", "name": "triple j", "dls": "New DLS"}
+    station_v1 = {"id": "0x1301", "name": "triple j", "channel": "9A", "dls": "Old DLS"}
+    station_v2 = {"id": "0x1301", "name": "triple j", "channel": "9A", "dls": "New DLS"}
 
     await registry.add_station(station_v1)
     await registry.add_station(station_v2)
@@ -101,3 +101,47 @@ async def test_station_count(registry):
     # Adding same station again should not increase count
     await registry.add_station({"id": "0x1301", "name": "triple j"})
     assert registry.station_count == 2
+
+
+@pytest.mark.asyncio
+async def test_duplicate_sid_different_channel(registry):
+    """Same service ID on different channels: keep first, record alternate."""
+    station1 = {"id": "0x1301", "name": "triple j", "channel": "9A", "bitrate": 128}
+    station2 = {"id": "0x1301", "name": "triple j", "channel": "9B", "bitrate": 128}
+
+    await registry.add_station(station1)
+    await registry.add_station(station2)
+
+    result = await registry.get_station("0x1301")
+    assert result is not None
+    assert result["channel"] == "9A"  # First occurrence kept
+    assert "alternate_channels" in result
+    assert "9B" in result["alternate_channels"]
+    assert registry.station_count == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_sid_same_channel_updates(registry):
+    """Same SID on same channel: update in place."""
+    station1 = {"id": "0x1301", "name": "triple j", "channel": "9A", "dls": "Old"}
+    station2 = {"id": "0x1301", "name": "triple j", "channel": "9A", "dls": "New"}
+
+    await registry.add_station(station1)
+    await registry.add_station(station2)
+
+    result = await registry.get_station("0x1301")
+    assert result["dls"] == "New"
+    assert "alternate_channels" not in result
+
+
+@pytest.mark.asyncio
+async def test_duplicate_sid_multiple_alternates(registry):
+    """Same SID on 3 different channels: keep first, record both alternates."""
+    await registry.add_station({"id": "0x1301", "name": "triple j", "channel": "9A"})
+    await registry.add_station({"id": "0x1301", "name": "triple j", "channel": "9B"})
+    await registry.add_station({"id": "0x1301", "name": "triple j", "channel": "9C"})
+
+    result = await registry.get_station("0x1301")
+    assert result["channel"] == "9A"
+    assert set(result["alternate_channels"]) == {"9B", "9C"}
+    assert registry.station_count == 1

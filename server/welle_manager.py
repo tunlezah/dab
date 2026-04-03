@@ -6,7 +6,14 @@ import signal
 
 import httpx
 
-from .config import WELLE_CLI_PATH, WELLE_CLI_PORT, WELLE_CLI_STARTUP_DELAY
+from .config import (
+    SDR_AGC,
+    SDR_GAIN,
+    SDR_PPM,
+    WELLE_CLI_PATH,
+    WELLE_CLI_PORT,
+    WELLE_CLI_STARTUP_DELAY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +93,16 @@ class WelleManager:
             "-w", str(WELLE_CLI_PORT),
             "-F", "rtl_sdr",
         ]
+
+        # SDR gain control: -G (manual) and -Q (AGC) are mutually exclusive
+        if SDR_GAIN is not None:
+            cmd.extend(["-G", str(SDR_GAIN)])
+        elif SDR_AGC:
+            cmd.append("-Q")
+
+        # PPM frequency correction for RTL-SDR oscillator drift
+        if SDR_PPM != 0:
+            cmd.extend(["-p", str(SDR_PPM)])
         logger.info("Starting welle-cli: %s", " ".join(cmd))
 
         try:

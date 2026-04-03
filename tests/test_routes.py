@@ -26,6 +26,7 @@ def client():
         "services": [],
     })
     mock_welle.tune = AsyncMock(return_value=True)
+    mock_welle.restart = AsyncMock(return_value=True)
     mock_welle.get_stream_url = AsyncMock(
         return_value="http://localhost:7979/mp3/0x1301"
     )
@@ -42,6 +43,7 @@ def client():
     }
     mock_scanner.scan_all = AsyncMock()
     mock_scanner.scan_popular = AsyncMock()
+    mock_scanner.scan_report = {}
 
     mock_registry = MagicMock()
     mock_registry.get_all = AsyncMock(return_value=[])
@@ -142,6 +144,37 @@ def test_scan_progress(client):
     assert data["channels_scanned"] == 3
     assert data["stations_found"] == 5
     assert data["progress_percent"] == 30.0
+
+
+def test_scan_report(client):
+    client.mock_scanner.scan_report = {
+        "9A": {"status": "found", "stations": 5, "attempts": 1},
+        "9B": {"status": "empty", "stations": 0, "attempts": 2},
+    }
+
+    response = client.get("/api/scan/report")
+    assert response.status_code == 200
+    data = response.json()
+    assert "report" in data
+    assert "9A" in data["report"]
+    assert data["report"]["9A"]["status"] == "found"
+    assert data["report"]["9B"]["attempts"] == 2
+
+
+def test_get_sdr_config(client):
+    response = client.get("/api/sdr/config")
+    assert response.status_code == 200
+    data = response.json()
+    assert "gain" in data
+    assert "agc" in data
+    assert "ppm" in data
+
+
+def test_set_sdr_config(client):
+    response = client.post("/api/sdr/config", json={"gain": 400, "agc": False, "ppm": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["welle_restarted"] is True
 
 
 def test_play_station_not_found(client):

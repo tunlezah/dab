@@ -66,6 +66,10 @@ class StationRegistry:
 
         Expected station dict keys:
             id, name, ensemble, channel, bitrate, mode, dls
+
+        Duplicate SID handling: if the same service ID is found on a
+        different channel, the first occurrence is kept (it was scanned
+        successfully) and the new channel is recorded as an alternate.
         """
         service_id = station.get("id")
         if not service_id:
@@ -74,8 +78,23 @@ class StationRegistry:
 
         async with self._lock:
             if service_id in self._stations:
-                self._stations[service_id].update(station)
-                logger.debug("Updated station %s (%s)", service_id, station.get("name"))
+                existing = self._stations[service_id]
+                existing_channel = existing.get("channel")
+                new_channel = station.get("channel")
+
+                if existing_channel and new_channel and existing_channel != new_channel:
+                    # Duplicate SID on a different channel — record alternate
+                    alternates = existing.setdefault("alternate_channels", [])
+                    if new_channel not in alternates:
+                        alternates.append(new_channel)
+                    logger.info(
+                        "Service %s (SID %s) found on %s, already registered from %s",
+                        station.get("name"), service_id, new_channel, existing_channel,
+                    )
+                else:
+                    # Same channel — update in place (e.g. label resolved)
+                    existing.update(station)
+                    logger.debug("Updated station %s (%s)", service_id, station.get("name"))
             else:
                 self._stations[service_id] = dict(station)
                 logger.info("Added station %s: %s", service_id, station.get("name"))

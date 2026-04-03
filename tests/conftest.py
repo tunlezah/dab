@@ -34,6 +34,8 @@ def sample_mux_data():
                 "mode": "DAB+",
                 "components": [
                     {
+                        "transportmode": "Audio",
+                        "ascty": "DAB+",
                         "subchannel": {"bitrate": 80},
                     }
                 ],
