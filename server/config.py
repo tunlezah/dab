@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 # App version — display only, bump manually on release
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 
 # Data directory for persisted files (stations list, etc.)
 _project_root = Path(__file__).resolve().parent.parent
@@ -19,8 +19,34 @@ WEB_PORT: int = int(os.environ.get("WEB_PORT", "8080"))
 # Path to the welle-cli binary
 WELLE_CLI_PATH: str = os.environ.get("WELLE_CLI_PATH", "welle-cli")
 
-# Seconds to dwell on each channel during a scan
+# Seconds to dwell on each channel during a scan (legacy, used as MIN_DWELL_TIME default)
 SCAN_DWELL_TIME: float = float(os.environ.get("SCAN_DWELL_TIME", "4.0"))
+
+# Adaptive dwell: minimum seconds before exiting a channel (even if services appear)
+MIN_DWELL_TIME: float = float(
+    os.environ.get("SCAN_MIN_DWELL", str(SCAN_DWELL_TIME))
+)
+
+# Adaptive dwell: maximum seconds to wait on a channel before giving up
+MAX_DWELL_TIME: float = float(os.environ.get("SCAN_MAX_DWELL", "12.0"))
+
+# Adaptive dwell: seconds between mux.json polls during dwell
+DWELL_POLL_INTERVAL: float = float(os.environ.get("SCAN_POLL_INTERVAL", "1.0"))
+
+# SDR gain control — None means use AGC (if SDR_AGC is True) or welle-cli default
+_sdr_gain_env = os.environ.get("SDR_GAIN", "")
+SDR_GAIN: int | None = int(_sdr_gain_env) if _sdr_gain_env else None
+
+# Enable automatic gain control (passed as -Q to welle-cli)
+SDR_AGC: bool = os.environ.get("SDR_AGC", "true").lower() in ("true", "1", "yes")
+
+# PPM frequency correction for RTL-SDR drift
+SDR_PPM: int = int(os.environ.get("SDR_PPM", "0"))
+
+# Include data-only services (no audio component) in station list
+INCLUDE_DATA_SERVICES: bool = os.environ.get(
+    "INCLUDE_DATA_SERVICES", "false"
+).lower() in ("true", "1", "yes")
 
 # Seconds between DLS metadata polls
 METADATA_POLL_INTERVAL: float = float(

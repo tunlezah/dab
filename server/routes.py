@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from .config import APP_VERSION, WELLE_CLI_PORT
+from .config import APP_VERSION, SDR_AGC, SDR_GAIN, SDR_PPM, WELLE_CLI_PORT
 from .welle_manager import WelleManager
 from .scanner import Scanner
 from .station_registry import StationRegistry
@@ -176,6 +176,45 @@ async def get_slide(service_id: str) -> StreamingResponse:
         iter([response.content]),
         media_type=content_type,
     )
+
+
+@router.get("/scan/report")
+async def get_scan_report() -> dict:
+    """Return per-channel scan status from the last scan."""
+    return {"report": _scanner.scan_report}
+
+
+@router.get("/sdr/config")
+async def get_sdr_config() -> dict:
+    """Return current SDR gain/AGC/PPM settings."""
+    return {
+        "gain": SDR_GAIN,
+        "agc": SDR_AGC,
+        "ppm": SDR_PPM,
+    }
+
+
+@router.post("/sdr/config")
+async def set_sdr_config(body: dict) -> dict:
+    """Update SDR settings and restart welle-cli to apply them."""
+    import server.config as cfg
+
+    if "gain" in body:
+        val = body["gain"]
+        cfg.SDR_GAIN = int(val) if val is not None else None
+    if "agc" in body:
+        cfg.SDR_AGC = bool(body["agc"])
+    if "ppm" in body:
+        cfg.SDR_PPM = int(body["ppm"])
+
+    # Restart welle-cli so the new flags take effect
+    restarted = await _welle.restart()
+    return {
+        "gain": cfg.SDR_GAIN,
+        "agc": cfg.SDR_AGC,
+        "ppm": cfg.SDR_PPM,
+        "welle_restarted": restarted,
+    }
 
 
 @router.get("/metadata")

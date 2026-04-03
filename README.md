@@ -9,10 +9,16 @@ Scan for stations, stream live radio in your browser, and view real-time metadat
 ## Features
 
 - **Station scanning** — Quick scan (popular channels) or full Band III sweep across all 38 Australian channels
+- **Adaptive dwell time** — Polls each channel for 4–12 seconds, exiting early when services stabilise
+- **Automatic retry** — Channels that return no services on the first pass are retried automatically
+- **SDR gain control** — Configurable AGC, manual gain, and PPM frequency correction
 - **Browser & server playback** — Listen through your browser, server speakers (via mpg123), or both simultaneously
 - **Live metadata** — Real-time DLS (now-playing text), SNR, bitrate, and audio mode
 - **MOT slideshow** — Station logos and artwork delivered over DAB+
 - **Signal monitoring** — SNR and demodulator status at a glance
+- **Scan diagnostics** — Per-channel scan report with status, retry count, and signal quality
+- **Duplicate handling** — Same service on multiple channels is detected and alternate paths recorded
+- **Data service filtering** — Data-only services (TPEG, slideshows) excluded by default
 - **Responsive design** — Works on desktop and mobile
 - **Zero frontend dependencies** — Vanilla HTML, CSS, and JavaScript with no build step
 
@@ -100,7 +106,14 @@ All settings are configured via environment variables. Set them in `/opt/dab-rad
 | `WEB_PORT` | `8080` | Web UI port |
 | `WELLE_CLI_PORT` | `7979` | Internal welle-cli HTTP port |
 | `WELLE_CLI_PATH` | `welle-cli` | Path to welle-cli binary |
-| `SCAN_DWELL_TIME` | `4.0` | Seconds per channel during scan |
+| `SCAN_DWELL_TIME` | `4.0` | Legacy: used as default for `SCAN_MIN_DWELL` |
+| `SCAN_MIN_DWELL` | `4.0` | Minimum seconds per channel before early exit |
+| `SCAN_MAX_DWELL` | `12.0` | Maximum seconds per channel before giving up |
+| `SCAN_POLL_INTERVAL` | `1.0` | Seconds between mux.json polls during dwell |
+| `SDR_GAIN` | _(unset)_ | Manual gain in tenths of dB (overrides AGC) |
+| `SDR_AGC` | `true` | Enable automatic gain control (`-Q` flag) |
+| `SDR_PPM` | `0` | PPM frequency correction for RTL-SDR drift |
+| `INCLUDE_DATA_SERVICES` | `false` | Include data-only services in station list |
 | `METADATA_POLL_INTERVAL` | `2.0` | Seconds between metadata updates |
 | `WELLE_CLI_STARTUP_DELAY` | `2.0` | Seconds to wait for welle-cli startup |
 | `POPULAR_CHANNELS` | `9A,9B,9C` | Comma-separated channels for quick scan |
@@ -114,6 +127,9 @@ The backend exposes a REST API for programmatic access.
 | `GET` | `/api/status` | System health and current state |
 | `POST` | `/api/scan?mode=full\|popular` | Start a channel scan |
 | `GET` | `/api/scan/progress` | Scan progress (channel, percent, stations found) |
+| `GET` | `/api/scan/report` | Per-channel scan status from last scan |
+| `GET` | `/api/sdr/config` | Current SDR gain/AGC/PPM settings |
+| `POST` | `/api/sdr/config` | Update SDR settings (restarts welle-cli) |
 | `GET` | `/api/stations` | List all discovered stations |
 | `POST` | `/api/play/{service_id}` | Tune to a station (`{"output": "browser"}`) |
 | `DELETE` | `/api/play` | Stop playback |

@@ -8,7 +8,7 @@ set -euo pipefail
 #   sudo ./install.sh --uninstall  Remove everything
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="1.0.0"
+VERSION="2.0.0"
 INSTALL_DIR="/opt/dab-radio"
 SERVICE_NAME="dab-radio"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"

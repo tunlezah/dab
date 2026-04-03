@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from server.scanner import Scanner
+from server.scanner import Scanner, STATUS_FOUND, STATUS_EMPTY, STATUS_RETRY_SUCCESS
 from server.station_registry import StationRegistry
 
 
@@ -10,6 +10,7 @@ def mock_welle_manager():
     welle = MagicMock()
     welle.tune = AsyncMock(return_value=True)
     welle.get_mux_json = AsyncMock(return_value=None)
+    welle.is_healthy = AsyncMock(return_value=True)
     return welle
 
 
@@ -23,14 +24,29 @@ def scanner(mock_welle_manager, registry):
     return Scanner(mock_welle_manager, registry)
 
 
+def _patch_dwell(min_dwell=0.0, max_dwell=0.1, poll_interval=0.05):
+    """Helper to patch dwell times for fast tests."""
+    return [
+        patch("server.scanner.MIN_DWELL_TIME", min_dwell),
+        patch("server.scanner.MAX_DWELL_TIME", max_dwell),
+        patch("server.scanner.DWELL_POLL_INTERVAL", poll_interval),
+    ]
+
+
 @pytest.mark.asyncio
 async def test_scan_finds_stations(mock_welle_manager, registry, sample_mux_data):
     mock_welle_manager.get_mux_json = AsyncMock(return_value=sample_mux_data)
     scanner = Scanner(mock_welle_manager, registry)
 
     with patch("server.scanner.BAND_III_CHANNELS", [("9A", 202.928)]):
-        with patch("server.scanner.SCAN_DWELL_TIME", 0):
+        patches = _patch_dwell()
+        for p in patches:
+            p.start()
+        try:
             stations = await scanner.scan_all()
+        finally:
+            for p in patches:
+                p.stop()
 
     assert len(stations) == 2
     names = {s["name"] for s in stations}
@@ -61,8 +77,14 @@ async def test_scan_empty_channel(mock_welle_manager, registry):
     scanner = Scanner(mock_welle_manager, registry)
 
     with patch("server.scanner.BAND_III_CHANNELS", [("5A", 174.928)]):
-        with patch("server.scanner.SCAN_DWELL_TIME", 0):
+        patches = _patch_dwell()
+        for p in patches:
+            p.start()
+        try:
             stations = await scanner.scan_all()
+        finally:
+            for p in patches:
+                p.stop()
 
     assert len(stations) == 0
     assert registry.station_count == 0
@@ -74,14 +96,20 @@ async def test_scan_handles_tune_failure(mock_welle_manager, registry):
     scanner = Scanner(mock_welle_manager, registry)
 
     with patch("server.scanner.BAND_III_CHANNELS", [("9A", 202.928)]):
-        with patch("server.scanner.SCAN_DWELL_TIME", 0):
+        patches = _patch_dwell()
+        for p in patches:
+            p.start()
+        try:
             stations = await scanner.scan_all()
+        finally:
+            for p in patches:
+                p.stop()
 
     assert len(stations) == 0
     assert registry.station_count == 0
-    # tune was called but get_mux_json should not have been called
-    mock_welle_manager.tune.assert_called_once_with("9A")
-    mock_welle_manager.get_mux_json.assert_not_called()
+    # Called twice: once on first pass, once on retry
+    assert mock_welle_manager.tune.call_count == 2
+    mock_welle_manager.tune.assert_called_with("9A")
 
 
 def test_parse_services(scanner):
@@ -95,6 +123,8 @@ def test_parse_services(scanner):
                 "mode": "DAB+",
                 "components": [
                     {
+                        "transportmode": "Audio",
+                        "ascty": "DAB+",
                         "subchannel": {"bitrate": 128},
                     }
                 ],
@@ -114,6 +144,7 @@ def test_parse_services(scanner):
     assert station["bitrate"] == 128
     assert station["mode"] == "DAB+"
     assert station["dls"] == "Now Playing: Song"
+    assert station["type"] == "audio"
 
 
 def test_parse_services_dict_labels(scanner):
@@ -142,7 +173,7 @@ def test_parse_services_dict_labels(scanner):
                 },
                 "dls_label": "Now Playing: Song",
                 "mode": "DAB+",
-                "components": [{"subchannel": {"bitrate": 128}}],
+                "components": [{"transportmode": "Audio", "subchannel": {"bitrate": 128}}],
             }
         ],
         "demodulator": {"snr": 15.2},
@@ -176,13 +207,155 @@ async def test_cancel_scan(mock_welle_manager, registry, sample_mux_data):
     ]
 
     with patch("server.scanner.BAND_III_CHANNELS", many_channels):
-        with patch("server.scanner.SCAN_DWELL_TIME", 0):
+        patches = _patch_dwell(min_dwell=0.0, max_dwell=0.05, poll_interval=0.02)
+        for p in patches:
+            p.start()
+        try:
             scan_task = asyncio.create_task(scanner.scan_all())
             await asyncio.sleep(0.05)
             assert scanner.scanning is True
             await scanner.cancel()
             stations = await scan_task
+        finally:
+            for p in patches:
+                p.stop()
 
     # Scanner should have stopped before completing all channels
     assert scanner.scanning is False
     assert scanner.progress["channels_scanned"] < len(many_channels)
+
+
+@pytest.mark.asyncio
+async def test_scan_report(mock_welle_manager, registry, sample_mux_data):
+    """Test that scan_report tracks per-channel status."""
+    mock_welle_manager.get_mux_json = AsyncMock(return_value=sample_mux_data)
+    scanner = Scanner(mock_welle_manager, registry)
+
+    with patch("server.scanner.BAND_III_CHANNELS", [("9A", 202.928)]):
+        patches = _patch_dwell()
+        for p in patches:
+            p.start()
+        try:
+            await scanner.scan_all()
+        finally:
+            for p in patches:
+                p.stop()
+
+    report = scanner.scan_report
+    assert "9A" in report
+    assert report["9A"]["status"] == STATUS_FOUND
+    assert report["9A"]["stations"] == 2
+    assert report["9A"]["attempts"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_retry_logic(mock_welle_manager, registry, sample_mux_data):
+    """Test that channels with no services on first pass are retried."""
+    call_count = 0
+
+    async def mux_with_retry(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        # Return None on first few calls (first pass), data on retry
+        if call_count <= 3:
+            return {"ensemble": {"label": "Test"}, "services": [], "demodulator": {"snr": 5.0}}
+        return sample_mux_data
+
+    mock_welle_manager.get_mux_json = AsyncMock(side_effect=mux_with_retry)
+    scanner = Scanner(mock_welle_manager, registry)
+
+    with patch("server.scanner.BAND_III_CHANNELS", [("9A", 202.928)]):
+        patches = _patch_dwell()
+        for p in patches:
+            p.start()
+        try:
+            stations = await scanner.scan_all()
+        finally:
+            for p in patches:
+                p.stop()
+
+    report = scanner.scan_report
+    assert "9A" in report
+    assert report["9A"]["attempts"] == 2
+
+
+def test_deferred_label_resolution(scanner):
+    """Test that services with valid SID but no name get a placeholder."""
+    mux = {
+        "ensemble": {"label": "Test Ensemble"},
+        "services": [
+            {
+                "sid": "0x1301",
+                "label": "",
+                "components": [{"transportmode": "Audio", "subchannel": {"bitrate": 128}}],
+            }
+        ],
+    }
+
+    stations = scanner._parse_services(mux, "9A")
+    assert len(stations) == 1
+    assert stations[0]["name"].startswith("[SID:")
+
+
+def test_data_only_service_filtered(scanner):
+    """Test that data-only services are filtered out by default."""
+    mux = {
+        "ensemble": {"label": "Test Ensemble"},
+        "services": [
+            {
+                "sid": "0x1301",
+                "label": "Audio Station",
+                "components": [{"transportmode": "Audio", "ascty": "DAB+", "subchannel": {"bitrate": 128}}],
+            },
+            {
+                "sid": "0x1302",
+                "label": "Data Service",
+                "components": [{"transportmode": "Stream", "subchannel": {"bitrate": 16}}],
+            },
+        ],
+    }
+
+    with patch("server.scanner.INCLUDE_DATA_SERVICES", False):
+        stations = scanner._parse_services(mux, "9A")
+
+    assert len(stations) == 1
+    assert stations[0]["name"] == "Audio Station"
+    assert stations[0]["type"] == "audio"
+
+
+def test_data_service_included_when_configured(scanner):
+    """Test that data services are included when INCLUDE_DATA_SERVICES is True."""
+    mux = {
+        "ensemble": {"label": "Test Ensemble"},
+        "services": [
+            {
+                "sid": "0x1302",
+                "label": "Data Service",
+                "components": [{"transportmode": "Stream", "subchannel": {"bitrate": 16}}],
+            },
+        ],
+    }
+
+    with patch("server.scanner.INCLUDE_DATA_SERVICES", True):
+        stations = scanner._parse_services(mux, "9A")
+
+    assert len(stations) == 1
+    assert stations[0]["type"] == "data"
+
+
+def test_merge_stations():
+    """Test that _merge_stations updates placeholder labels."""
+    existing = [
+        {"id": "0x1301", "name": "[SID:0x1301]", "channel": "9A", "bitrate": None, "dls": ""},
+    ]
+    new = [
+        {"id": "0x1301", "name": "triple j", "channel": "9A", "bitrate": 128, "dls": "Now Playing"},
+        {"id": "0x1302", "name": "Double J", "channel": "9A", "bitrate": 80, "dls": ""},
+    ]
+
+    Scanner._merge_stations(existing, new)
+
+    assert len(existing) == 2
+    assert existing[0]["name"] == "triple j"
+    assert existing[0]["bitrate"] == 128
+    assert existing[1]["name"] == "Double J"
