@@ -6,7 +6,14 @@ import signal
 
 import httpx
 
-from .config import WELLE_CLI_PATH, WELLE_CLI_PORT, WELLE_CLI_STARTUP_DELAY
+from .config import (
+    WELLE_CLI_PATH,
+    WELLE_CLI_PORT,
+    WELLE_CLI_STARTUP_DELAY,
+    SDR_GAIN,
+    SDR_AGC,
+    SDR_PPM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +93,19 @@ class WelleManager:
             "-w", str(WELLE_CLI_PORT),
             "-F", "rtl_sdr",
         ]
+
+        # SDR gain: -G (manual) and -Q (AGC) are mutually exclusive.
+        # These flags may not be supported by all welle-cli versions,
+        # so failures are caught below via stderr capture.
+        if SDR_GAIN is not None:
+            cmd.extend(["-G", str(int(SDR_GAIN))])
+        elif SDR_AGC:
+            cmd.append("-Q")
+
+        # PPM frequency correction for RTL-SDR oscillator drift
+        if SDR_PPM != 0:
+            cmd.extend(["-p", str(SDR_PPM)])
+
         logger.info("Starting welle-cli: %s", " ".join(cmd))
 
         try:
@@ -104,9 +124,17 @@ class WelleManager:
         await asyncio.sleep(WELLE_CLI_STARTUP_DELAY)
 
         if self._process.returncode is not None:
+            # Capture stderr to diagnose why welle-cli failed
+            stderr_output = ""
+            try:
+                stderr_data = await self._process.stderr.read()
+                stderr_output = stderr_data.decode(errors="replace").strip()
+            except Exception:
+                pass
             logger.error(
-                "welle-cli exited immediately with code %d",
+                "welle-cli exited immediately with code %d: %s",
                 self._process.returncode,
+                stderr_output or "(no stderr output)",
             )
             self._process = None
             return False
@@ -206,9 +234,20 @@ class WelleManager:
 
         try:
             returncode = await self._process.wait()
+            stderr_output = ""
+            try:
+                stderr_data = await self._process.stderr.read()
+                stderr_output = stderr_data.decode(errors="replace").strip()
+                if stderr_output:
+                    # Log last few lines to avoid flooding
+                    lines = stderr_output.splitlines()[-5:]
+                    stderr_output = "\n".join(lines)
+            except Exception:
+                pass
             logger.warning(
-                "welle-cli exited unexpectedly with code %d; restarting",
+                "welle-cli exited unexpectedly with code %d; restarting. stderr: %s",
                 returncode,
+                stderr_output or "(none)",
             )
             self._running = False
             self._process = None
