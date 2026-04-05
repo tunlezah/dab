@@ -31,6 +31,13 @@ do_uninstall() {
         systemctl disable "$SERVICE_NAME"
     fi
 
+    # Kill any orphaned welle-cli processes
+    if pgrep -x welle-cli >/dev/null 2>&1; then
+        echo ">>> Killing orphaned welle-cli process(es) ..."
+        pkill -9 -x welle-cli || true
+        sleep 1
+    fi
+
     # Remove service file
     if [[ -f "$SERVICE_FILE" ]]; then
         echo ">>> Removing systemd service file ..."
@@ -113,6 +120,25 @@ if [[ -d "$INSTALL_DIR" ]] || [[ -f "$SERVICE_FILE" ]]; then
     if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
         echo ">>> Stopping existing $SERVICE_NAME service ..."
         systemctl stop "$SERVICE_NAME"
+    fi
+
+    # Kill any orphaned welle-cli processes from a previous run.
+    # These can hold the USB device or port 7979, preventing the new
+    # instance from starting (resulting in permanent "Offline" status).
+    if pgrep -x welle-cli >/dev/null 2>&1; then
+        echo ">>> Killing orphaned welle-cli process(es) ..."
+        pkill -x welle-cli || true
+        sleep 1
+        # Force-kill if still alive
+        if pgrep -x welle-cli >/dev/null 2>&1; then
+            pkill -9 -x welle-cli || true
+            sleep 1
+        fi
+    fi
+
+    # Release the RTL-SDR USB device if anything else grabbed it
+    if pgrep -x rtl_test >/dev/null 2>&1; then
+        pkill -x rtl_test || true
     fi
 
     # Remove old application files (keep .env for port config)
@@ -259,6 +285,13 @@ echo ">>> Using port $PORT"
 # ---------------------------------------------------------------------------
 # 9. Start service
 # ---------------------------------------------------------------------------
+# Final check: ensure welle-cli's port is free before starting
+if ss -tlnp 2>/dev/null | grep -q ":7979 "; then
+    echo "WARNING: Port 7979 still in use — killing the process holding it ..."
+    fuser -k 7979/tcp 2>/dev/null || true
+    sleep 1
+fi
+
 echo ">>> Starting $SERVICE_NAME service ..."
 systemctl start "$SERVICE_NAME"
 echo ">>> DAB+ Radio v$VERSION is running at http://localhost:$PORT"
