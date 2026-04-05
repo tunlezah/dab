@@ -79,8 +79,8 @@ async def test_scan_handles_tune_failure(mock_welle_manager, registry):
 
     assert len(stations) == 0
     assert registry.station_count == 0
-    # tune was called but get_mux_json should not have been called
-    mock_welle_manager.tune.assert_called_once_with("9A")
+    # tune was called (first pass + retry) but get_mux_json should not have been called
+    assert mock_welle_manager.tune.call_count == 2
     mock_welle_manager.get_mux_json.assert_not_called()
 
 

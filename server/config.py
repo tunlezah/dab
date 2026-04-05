@@ -19,8 +19,8 @@ WEB_PORT: int = int(os.environ.get("WEB_PORT", "8080"))
 # Path to the welle-cli binary
 WELLE_CLI_PATH: str = os.environ.get("WELLE_CLI_PATH", "welle-cli")
 
-# Seconds to dwell on each channel during a scan
-SCAN_DWELL_TIME: float = float(os.environ.get("SCAN_DWELL_TIME", "4.0"))
+# Seconds to dwell on each channel during a scan (10s default covers weak signals)
+SCAN_DWELL_TIME: float = float(os.environ.get("SCAN_DWELL_TIME", "10.0"))
 
 # Seconds between DLS metadata polls
 METADATA_POLL_INTERVAL: float = float(

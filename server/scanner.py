@@ -83,6 +83,7 @@ class Scanner:
         self._channels_total = len(channels)
         self._stations_found = 0
         all_stations: list[dict] = []
+        empty_channels: list[str] = []
 
         await self._log("info", f"Starting scan of {len(channels)} channels")
 
@@ -106,7 +107,29 @@ class Scanner:
                     names = ", ".join(s["name"] for s in found)
                     await self._log("info", f"Channel {channel}: found {len(found)} stations ({names})")
                 else:
+                    empty_channels.append(channel)
                     await self._log("info", f"Channel {channel}: no stations")
+
+            # Retry channels that found nothing — transient interference or
+            # slow FIC decode may have caused a miss on the first attempt.
+            if empty_channels and not self._cancelled:
+                await self._log("info", f"Retrying {len(empty_channels)} empty channels")
+                for channel in empty_channels:
+                    if self._cancelled:
+                        break
+
+                    self._current_channel = channel
+                    try:
+                        found = await self._scan_channel(channel)
+                    except Exception as exc:
+                        await self._log("error", f"Channel {channel} retry: scan error — {exc}")
+                        found = []
+
+                    if found:
+                        all_stations.extend(found)
+                        self._stations_found += len(found)
+                        names = ", ".join(s["name"] for s in found)
+                        await self._log("info", f"Channel {channel} retry: found {len(found)} stations ({names})")
         finally:
             self._scanning = False
             self._current_channel = None
@@ -122,24 +145,38 @@ class Scanner:
         return all_stations
 
     async def _scan_channel(self, channel: str) -> list[dict]:
-        """Tune to a channel, wait for lock, then extract discovered services."""
+        """Tune to a channel, poll mux.json during dwell, keep best result."""
         tuned = await self._welle.tune(channel)
         if not tuned:
             await self._log("warn", f"Failed to tune to channel {channel}")
             return []
 
-        await asyncio.sleep(SCAN_DWELL_TIME)
+        # Poll mux.json every 2 seconds during the dwell period.
+        # FIC decoding is progressive — later polls may find more services.
+        poll_interval = min(2.0, SCAN_DWELL_TIME) if SCAN_DWELL_TIME > 0 else 0
+        elapsed = 0.0
+        best_stations: list[dict] = []
 
-        mux_data = await self._welle.get_mux_json()
-        if mux_data is None:
-            await self._log("info", f"No signal on channel {channel}")
+        while elapsed < SCAN_DWELL_TIME or (SCAN_DWELL_TIME == 0 and elapsed == 0):
+            if poll_interval > 0:
+                await asyncio.sleep(poll_interval)
+            elapsed += max(poll_interval, 1)
+
+            mux_data = await self._welle.get_mux_json()
+            if mux_data is None:
+                continue
+
+            stations = self._parse_services(mux_data, channel)
+            if len(stations) > len(best_stations):
+                best_stations = stations
+
+        if not best_stations:
             return []
 
-        stations = self._parse_services(mux_data, channel)
-        for station in stations:
+        for station in best_stations:
             await self._registry.add_station(station)
 
-        return stations
+        return best_stations
 
     @staticmethod
     def _extract_label(value) -> str:
