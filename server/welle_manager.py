@@ -191,18 +191,35 @@ class WelleManager:
         return await self.start(target)
 
     async def tune(self, channel: str) -> bool:
-        """Tune to a different channel via welle-cli HTTP API."""
+        """Tune to a different channel.
+
+        Tries the HTTP POST /channel API first (fast, ~instant).  If the
+        endpoint hangs or fails (common with welle-cli 2.4+ds Debian
+        package), falls back to a full stop/start cycle on the new channel.
+        """
+        if channel == self._current_channel:
+            return True
+
+        if await self._tune_http(channel):
+            return True
+
+        logger.info("HTTP tune failed; restarting welle-cli on channel %s", channel)
+        return await self.restart(channel)
+
+    async def _tune_http(self, channel: str) -> bool:
+        """Attempt channel change via welle-cli HTTP API (2-second timeout)."""
         url = f"http://localhost:{WELLE_CLI_PORT}/channel"
         try:
-            resp = await self._http.post(url, content=channel)
+            resp = await self._http.post(
+                url, content=channel, timeout=2.0,
+            )
             if resp.status_code == 200:
                 self._current_channel = channel
-                logger.info("Tuned to channel %s", channel)
+                logger.info("Tuned to channel %s via HTTP", channel)
                 return True
-            logger.error("Tune request returned status %d", resp.status_code)
+            logger.debug("HTTP tune returned status %d", resp.status_code)
             return False
-        except httpx.HTTPError as exc:
-            logger.error("Tune request failed: %s", exc)
+        except httpx.HTTPError:
             return False
 
     async def get_mux_json(self) -> dict | None:
