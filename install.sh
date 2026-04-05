@@ -168,11 +168,20 @@ apt-get install -y \
     xxd
 
 # ---------------------------------------------------------------------------
-# 4. Build welle.io from source (if not already installed)
+# 4. Build welle.io from source
 # ---------------------------------------------------------------------------
-if command -v welle-cli &>/dev/null; then
-    echo ">>> welle-cli already installed, skipping"
-else
+# The source-built welle-cli (installed to /usr/local/bin) supports the full
+# HTTP API including POST /channel for tuning.  The Debian-packaged version
+# (installed to /usr/bin as welle-cli 2.4+ds) does NOT — its POST /channel
+# endpoint hangs, breaking scanning entirely.  We must always use the
+# source-built version, so we check for /usr/local/bin specifically.
+_need_build=true
+if [[ -x /usr/local/bin/welle-cli ]]; then
+    echo ">>> Source-built welle-cli found at /usr/local/bin/welle-cli, skipping build"
+    _need_build=false
+fi
+
+if [[ "$_need_build" == true ]]; then
     echo ">>> Building welle-cli from source ..."
     BUILD_DIR="/tmp/welle-io-build"
     rm -rf "$BUILD_DIR"
@@ -184,7 +193,14 @@ else
     make install
     popd >/dev/null
     rm -rf "$BUILD_DIR"
-    echo ">>> welle-cli installed to $(command -v welle-cli || echo /usr/local/bin/welle-cli)"
+    echo ">>> welle-cli installed to /usr/local/bin/welle-cli"
+fi
+
+# Ensure the source-built version takes priority over any Debian package
+WELLE_CLI_ACTUAL="$(command -v welle-cli 2>/dev/null || true)"
+if [[ "$WELLE_CLI_ACTUAL" != "/usr/local/bin/welle-cli" ]] && [[ -x /usr/local/bin/welle-cli ]]; then
+    echo "WARNING: welle-cli in PATH is $WELLE_CLI_ACTUAL (likely Debian package)."
+    echo "         The source-built /usr/local/bin/welle-cli will be used instead."
 fi
 
 # ---------------------------------------------------------------------------

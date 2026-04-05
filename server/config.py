@@ -77,22 +77,6 @@ BAND_III_CHANNELS: list[tuple[str, float]] = [
     ("13F", 239.200),
 ]
 
-# SDR gain control (passed to welle-cli)
-# Set SDR_GAIN to a numeric value (e.g. "29.7") for manual gain, or leave
-# unset/empty and set SDR_AGC=1 for automatic gain control.
-# Supported gain values depend on the tuner; common R820T values:
-#   0.0 0.9 1.4 2.7 3.7 7.7 8.7 12.5 14.4 15.7 16.6 19.7 20.7
-#   22.9 25.4 28.0 29.7 32.8 33.8 36.4 37.2 38.6 40.2 42.1 43.4
-#   43.9 44.5 48.0 49.6
-_sdr_gain_env = os.environ.get("SDR_GAIN", "")
-SDR_GAIN: float | None = float(_sdr_gain_env) if _sdr_gain_env else None
-
-SDR_AGC: bool = os.environ.get("SDR_AGC", "").lower() in ("1", "true", "yes")
-
-# PPM frequency correction for RTL-SDR oscillator drift.
-# Most dongles are off by 1–60 ppm. Use `rtl_test -p` to measure yours.
-SDR_PPM: int = int(os.environ.get("SDR_PPM", "0"))
-
 # Channels to scan in quick/popular mode (Sydney metro defaults)
 _popular_env = os.environ.get("POPULAR_CHANNELS", "")
 POPULAR_CHANNELS: list[str] = (

@@ -6,14 +6,7 @@ import signal
 
 import httpx
 
-from .config import (
-    WELLE_CLI_PATH,
-    WELLE_CLI_PORT,
-    WELLE_CLI_STARTUP_DELAY,
-    SDR_GAIN,
-    SDR_AGC,
-    SDR_PPM,
-)
+from .config import WELLE_CLI_PATH, WELLE_CLI_PORT, WELLE_CLI_STARTUP_DELAY
 
 logger = logging.getLogger(__name__)
 
@@ -93,19 +86,6 @@ class WelleManager:
             "-w", str(WELLE_CLI_PORT),
             "-F", "rtl_sdr",
         ]
-
-        # SDR gain: -G (manual) and -Q (AGC) are mutually exclusive.
-        # These flags may not be supported by all welle-cli versions,
-        # so failures are caught below via stderr capture.
-        if SDR_GAIN is not None:
-            cmd.extend(["-G", str(int(SDR_GAIN))])
-        elif SDR_AGC:
-            cmd.append("-Q")
-
-        # PPM frequency correction for RTL-SDR oscillator drift
-        if SDR_PPM != 0:
-            cmd.extend(["-p", str(SDR_PPM)])
-
         logger.info("Starting welle-cli: %s", " ".join(cmd))
 
         try:
@@ -124,17 +104,9 @@ class WelleManager:
         await asyncio.sleep(WELLE_CLI_STARTUP_DELAY)
 
         if self._process.returncode is not None:
-            # Capture stderr to diagnose why welle-cli failed
-            stderr_output = ""
-            try:
-                stderr_data = await self._process.stderr.read()
-                stderr_output = stderr_data.decode(errors="replace").strip()
-            except Exception:
-                pass
             logger.error(
-                "welle-cli exited immediately with code %d: %s",
+                "welle-cli exited immediately with code %d",
                 self._process.returncode,
-                stderr_output or "(no stderr output)",
             )
             self._process = None
             return False
@@ -191,35 +163,18 @@ class WelleManager:
         return await self.start(target)
 
     async def tune(self, channel: str) -> bool:
-        """Tune to a different channel.
-
-        Tries the HTTP POST /channel API first (fast, ~instant).  If the
-        endpoint hangs or fails (common with welle-cli 2.4+ds Debian
-        package), falls back to a full stop/start cycle on the new channel.
-        """
-        if channel == self._current_channel:
-            return True
-
-        if await self._tune_http(channel):
-            return True
-
-        logger.info("HTTP tune failed; restarting welle-cli on channel %s", channel)
-        return await self.restart(channel)
-
-    async def _tune_http(self, channel: str) -> bool:
-        """Attempt channel change via welle-cli HTTP API (2-second timeout)."""
+        """Tune to a different channel via welle-cli HTTP API."""
         url = f"http://localhost:{WELLE_CLI_PORT}/channel"
         try:
-            resp = await self._http.post(
-                url, content=channel, timeout=2.0,
-            )
+            resp = await self._http.post(url, content=channel)
             if resp.status_code == 200:
                 self._current_channel = channel
-                logger.info("Tuned to channel %s via HTTP", channel)
+                logger.info("Tuned to channel %s", channel)
                 return True
-            logger.debug("HTTP tune returned status %d", resp.status_code)
+            logger.error("Tune request returned status %d", resp.status_code)
             return False
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.error("Tune request failed: %s", exc)
             return False
 
     async def get_mux_json(self) -> dict | None:
@@ -251,20 +206,9 @@ class WelleManager:
 
         try:
             returncode = await self._process.wait()
-            stderr_output = ""
-            try:
-                stderr_data = await self._process.stderr.read()
-                stderr_output = stderr_data.decode(errors="replace").strip()
-                if stderr_output:
-                    # Log last few lines to avoid flooding
-                    lines = stderr_output.splitlines()[-5:]
-                    stderr_output = "\n".join(lines)
-            except Exception:
-                pass
             logger.warning(
-                "welle-cli exited unexpectedly with code %d; restarting. stderr: %s",
+                "welle-cli exited unexpectedly with code %d; restarting",
                 returncode,
-                stderr_output or "(none)",
             )
             self._running = False
             self._process = None
